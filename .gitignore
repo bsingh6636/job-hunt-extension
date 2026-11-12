@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vite/
+*.log
+# Real candidate data never goes into git
+profile/profile.json
+profile/*.local.json
+exports/
+
+# SQLite data written by the local server
+server/data/

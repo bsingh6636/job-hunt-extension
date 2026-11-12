@@ -1,0 +1,49 @@
+{
+  "identity": { "firstName": "Asha", "lastName": "Example", "fullName": "Asha Example" },
+  "contact": { "email": "asha.example@example.com", "phone": "9999999999", "phoneCountryCode": "91", "phoneCountry": "IN" },
+  "location": { "city": "Bengaluru", "state": "Karnataka", "postalCode": "560001", "country": "India", "countryCode": "IN" },
+  "links": {
+    "linkedin": "https://www.linkedin.com/in/asha-example",
+    "github": "https://github.com/asha-example",
+    "portfolio": "https://asha.example.com",
+    "other": []
+  },
+  "workAuthorization": {
+    "country": "India",
+    "authorized": true,
+    "requiresSponsorship": false,
+    "willingToRelocate": true,
+    "noticePeriod": "Immediate"
+  },
+  "compensation": { "currency": "INR", "current": "7.2 LPA", "expected": "10 LPA" },
+  "education": [
+    {
+      "university": "Example University",
+      "institution": "Example Institute of Technology",
+      "degree": "Bachelor of Engineering",
+      "field": "Computer Science and Engineering",
+      "startDate": "2020-12",
+      "endDate": "2024-07",
+      "location": "Bengaluru, India"
+    }
+  ],
+  "experience": [
+    {
+      "company": "Example Corp",
+      "title": "Full Stack Developer",
+      "location": "Bengaluru, India",
+      "startDate": "2024-11",
+      "endDate": "2026-09",
+      "current": false,
+      "employmentType": "full-time",
+      "description": "Built two customer-facing React applications on a Node.js and MySQL backend."
+    }
+  ],
+  "skills": ["JavaScript", "TypeScript", "Node.js", "React", "MySQL"],
+  "answers": {
+    "howDidYouHear": "LinkedIn",
+    "gender": "Male",
+    "pronouns": "He/Him"
+  },
+  "meta": { "label": "example", "source": "profile.example.json" }
+}
