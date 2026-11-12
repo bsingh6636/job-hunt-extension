@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { onMessage } from '@shared/messages';
 import { getSettings, postsRepo, settingsStore } from '@shared/storage';
-import { POST_STATUSES, type ExtractProgress, type PostStatus } from '@shared/types';
+import { POST_STATUSES, type ExtractMode, type ExtractProgress, type ExtractedPost, type PostStatus } from '@shared/types';
 import { PostCard } from '../components/PostCard';
 import { download, postsToCsv, postsToJson, postsToText, copyText, stamp } from '../lib/export';
 import { useFlash, useRepository, useValueStore } from '../lib/hooks';
@@ -12,6 +12,15 @@ import { askTab, isLinkedInUrl } from '../lib/tabs';
 interface Props {
   activeTab: chrome.tabs.Tab | undefined;
 }
+
+type ContactFilter = 'any' | 'email' | 'link' | 'either' | 'none';
+const CONTACT_FILTERS: Record<ContactFilter, { label: string; test: (p: ExtractedPost) => boolean }> = {
+  any: { label: 'any contact', test: () => true },
+  either: { label: 'has email or link', test: (p) => p.emails.length > 0 || p.links.length > 0 },
+  email: { label: 'has email', test: (p) => p.emails.length > 0 },
+  link: { label: 'has link', test: (p) => p.links.length > 0 },
+  none: { label: 'no email, no link', test: (p) => p.emails.length === 0 && p.links.length === 0 },
+};
 
 export function PostsPage({ activeTab }: Props) {
   const { items: posts } = useRepository(postsRepo);
@@ -25,6 +34,12 @@ export function PostsPage({ activeTab }: Props) {
   const [savedSample, setSavedSample] = useState<SavedSample | null>(null);
   const [savingSample, setSavingSample] = useState(false);
   const [samplesIndex, setSamplesIndex] = useState('');
+  /** Posts to capture on Extract; starts from Settings and is saved back when used. */
+  const [count, setCount] = useState('');
+
+  useEffect(() => {
+    if (settings?.extract?.maxPosts && !count) setCount(String(settings.extract.maxPosts));
+  }, [settings?.extract?.maxPosts, count]);
 
   useEffect(() => {
     void serverBase().then((base) => setSamplesIndex(`${base}/samples`));
@@ -32,7 +47,7 @@ export function PostsPage({ activeTab }: Props) {
 
   // Filters
   const [query, setQuery] = useState('');
-  const [onlyEmail, setOnlyEmail] = useState(false);
+  const [contact, setContact] = useState<ContactFilter>('any');
   const [hideExcluded, setHideExcluded] = useState(true);
   const [statusFilter, setStatusFilter] = useState<PostStatus | 'all'>('all');
   const [keyword, setKeyword] = useState<string | null>(null);
@@ -49,7 +64,7 @@ export function PostsPage({ activeTab }: Props) {
   const onLinkedIn = isLinkedInUrl(activeTab?.url);
   const running = !!progress?.running && !progress.done;
 
-  const start = async () => {
+  const start = async (mode: ExtractMode) => {
     if (!activeTab?.id) return;
     setError('');
     const current = await storageStatus();
@@ -59,10 +74,16 @@ export function PostsPage({ activeTab }: Props) {
       return;
     }
     try {
-      const { extract } = await getSettings();
-      const res = await askTab(activeTab.id, 'LINKEDIN_EXTRACT_START', { options: extract });
+      const saved = await getSettings();
+      let { extract } = saved;
+      const wanted = Math.floor(Number(count));
+      if (mode === 'fresh' && wanted >= 1 && wanted !== extract.maxPosts) {
+        extract = { ...extract, maxPosts: wanted };
+        await settingsStore.set({ ...saved, extract });
+      }
+      const res = await askTab(activeTab.id, 'LINKEDIN_EXTRACT_START', { options: extract, mode });
       if (!res.started) setError(res.reason ?? 'Could not start');
-      else setProgress({ running: true, seen: 0, sent: 0, message: 'Starting...' });
+      else setProgress({ running: true, seen: 0, sent: 0, message: mode === 'more' ? `Loading ${extract.moreBatch} more...` : 'Starting...' });
     } catch (err) {
       setError((err as Error).message);
     }
@@ -104,15 +125,17 @@ export function PostsPage({ activeTab }: Props) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return posts
-      .filter((p) => !onlyEmail || p.emails.length > 0)
+      .filter(CONTACT_FILTERS[contact].test)
       .filter((p) => !hideExcluded || p.excludedBy.length === 0)
       .filter((p) => statusFilter === 'all' || p.status === statusFilter)
       .filter((p) => !keyword || p.matchedKeywords.includes(keyword))
       .filter((p) => !q || `${p.text} ${p.author.name} ${p.author.headline ?? ''} ${p.emails.join(' ')}`.toLowerCase().includes(q))
       .sort((a, b) => (b.postedAt ?? b.capturedAt).localeCompare(a.postedAt ?? a.capturedAt));
-  }, [posts, query, onlyEmail, hideExcluded, statusFilter, keyword]);
+  }, [posts, query, contact, hideExcluded, statusFilter, keyword]);
 
   const withEmail = posts.filter((p) => p.emails.length > 0).length;
+  const withLink = posts.filter((p) => p.links.length > 0).length;
+  const withNeither = posts.filter(CONTACT_FILTERS.none.test).length;
 
   const bulk = {
     copyJson: () => copyText(postsToJson(filtered)).then(() => setFlash('Copied JSON')),
@@ -145,9 +168,18 @@ export function PostsPage({ activeTab }: Props) {
           <>
             <div className="row">
               {!running ? (
-                <button className="primary" onClick={() => void start()}>
-                  Extract posts from this tab
-                </button>
+                <>
+                  <label className="check" title="Posts to capture, starting from the top of the results">
+                    posts
+                    <input type="number" min={1} value={count} onChange={(e) => setCount(e.target.value)} style={{ width: '5em' }} />
+                  </label>
+                  <button className="primary" onClick={() => void start('fresh')}>
+                    Extract
+                  </button>
+                  <button onClick={() => void start('more')} title="Capture the next posts not yet captured on this page, continuing where the last run stopped">
+                    More (+{settings?.extract?.moreBatch ?? 20})
+                  </button>
+                </>
               ) : (
                 <button className="danger" onClick={() => void stop()}>
                   Stop
@@ -207,15 +239,19 @@ export function PostsPage({ activeTab }: Props) {
 
       <div className="row">
         <span className="muted small">
-          {posts.length} stored · {withEmail} with email · {filtered.length} shown
+          {posts.length} stored · {withEmail} with email · {withLink} with link · {withNeither} with neither · {filtered.length} shown
         </span>
       </div>
 
       <input type="search" placeholder="Search text, author, email" value={query} onChange={(e) => setQuery(e.target.value)} />
       <div className="row">
-        <label className="check">
-          <input type="checkbox" checked={onlyEmail} onChange={(e) => setOnlyEmail(e.target.checked)} /> has email
-        </label>
+        <select value={contact} onChange={(e) => setContact(e.target.value as ContactFilter)} style={{ width: 'auto' }}>
+          {(Object.keys(CONTACT_FILTERS) as ContactFilter[]).map((k) => (
+            <option key={k} value={k}>
+              {CONTACT_FILTERS[k].label}
+            </option>
+          ))}
+        </select>
         <label className="check">
           <input type="checkbox" checked={hideExcluded} onChange={(e) => setHideExcluded(e.target.checked)} /> hide excluded
         </label>

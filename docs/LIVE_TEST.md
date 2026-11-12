@@ -26,7 +26,7 @@ npm run build
 3. Click the extension icon. Side panel opens on **Posts**.
 4. Press **Diagnose page**. The report is copied to the clipboard and shown in the panel.
    **PASTE** the whole diagnose JSON.
-5. Press **Extract posts from this tab**. Wait 20 seconds.
+5. Type a number in the posts box (e.g. 50) and press **Extract**. Then press **More (+20)** once and check it adds new posts instead of repeating the first ones.
    **PASTE** the status line (e.g. "Captured 37 posts on page") and the "N stored" count. Let it run until it stops by itself and **PASTE** the final line ("No more posts loaded", "Reached limit of N posts", "Stopped" or an error). Note whether a "Show more results" button was visible at the bottom when it stopped.
 6. Open DevTools (F12) on the LinkedIn tab, Console, filter `[JobHunt]`.
    **PASTE** any lines, especially errors.

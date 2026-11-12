@@ -88,7 +88,7 @@ export function PostCard({ post }: Props) {
       )}
 
       {post.links.length > 0 && (
-        <details>
+        <details open>
           <summary>{post.links.length} link(s)</summary>
           <div className="links">
             {post.links.map((l) => (

@@ -48,11 +48,21 @@ export type PostStatus = 'new' | 'reviewed' | 'contacted' | 'ignored';
 export const POST_STATUSES: PostStatus[] = ['new', 'reviewed', 'contacted', 'ignored'];
 
 export interface ExtractOptions {
+  /** Posts to capture when Extract is pressed. */
   maxPosts: number;
+  /** Posts to capture each time More is pressed (continues where the last run stopped). */
+  moreBatch: number;
   scroll: boolean;
+  /** Longest wait for LinkedIn to render more posts after a scroll. */
   scrollDelayMs: number;
+  /** Random pause between scrolls, so the pace looks like a person reading. */
+  pauseMinMs: number;
+  pauseMaxMs: number;
   expand: boolean;
 }
+
+/** "fresh" = Extract (from the top, up to maxPosts); "more" = More (next moreBatch not yet captured on this page). */
+export type ExtractMode = 'fresh' | 'more';
 
 export interface ExtractProgress {
   running: boolean;
@@ -146,7 +156,7 @@ export const DEFAULT_SETTINGS: Settings = {
     exclude: ['open to work', 'looking for a job'],
   },
   captureOnlyMatching: false,
-  extract: { maxPosts: 200, scroll: true, scrollDelayMs: 1500, expand: true },
+  extract: { maxPosts: 200, moreBatch: 20, scroll: true, scrollDelayMs: 1500, pauseMinMs: 3000, pauseMaxMs: 7000, expand: true },
   autofill: { fillEmptyOnly: true, highlight: true },
   storage: { mode: 'server', serverUrl: 'http://127.0.0.1:4777' },
 };

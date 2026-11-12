@@ -1,4 +1,4 @@
-import type { ExtractOptions, ExtractProgress, ExtractedPost, FillReport, Profile } from './types';
+import type { ExtractMode, ExtractOptions, ExtractProgress, ExtractedPost, FillReport, Profile } from './types';
 import type { DiagnoseReport } from '../content/linkedin/diagnose';
 import type { PageSample } from '../content/linkedin/sample';
 
@@ -11,7 +11,7 @@ export interface MessageMap {
   PING: { req: Record<string, never>; res: { ok: true; where: string } };
 
   // Side panel -> LinkedIn content script
-  LINKEDIN_EXTRACT_START: { req: { options: ExtractOptions }; res: { started: boolean; reason?: string } };
+  LINKEDIN_EXTRACT_START: { req: { options: ExtractOptions; mode?: ExtractMode }; res: { started: boolean; reason?: string } };
   LINKEDIN_EXTRACT_STOP: { req: Record<string, never>; res: { ok: true } };
   LINKEDIN_STATUS: { req: Record<string, never>; res: { running: boolean; postsOnPage: number } };
   /** Structural description of the page for fixing selectors; see content/linkedin/diagnose.ts. */

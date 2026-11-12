@@ -35,10 +35,10 @@ A modular Chrome extension that streamlines job hunting. Phase 1 (this repo, ext
 
 ### A. LinkedIn post and contact extractor
 
-Run a LinkedIn search such as `"hiring" AND "2+ years" AND "node.js" NOT "open to work"`, open the side panel, click **Extract posts from this tab**. The extension:
+Run a LinkedIn search such as `"hiring" AND "2+ years" AND "node.js" NOT "open to work"`, open the side panel, enter how many posts you want (e.g. 200) and click **Extract**, or click **More** to capture the next 20. The extension:
 
-- scrolls the page and clicks every "...more" so truncated posts are fully expanded
-- captures **every detail of every post**, not only the ones with an email:
+- scrolls the page at a human pace (a random 3-7 s pause between scrolls, configurable), clicks every "...more" so truncated posts are fully expanded, and stores each batch as soon as it is parsed, so a stopped run keeps everything captured so far
+- captures **every detail of every post**, with or without an email (many posts have only an apply link):
   - author name, headline, profile URL
   - post URL and the exact timestamp (decoded from the activity id, more precise than LinkedIn's "3d")
   - the full post text with line breaks preserved
@@ -49,7 +49,7 @@ Run a LinkedIn search such as `"hiring" AND "2+ years" AND "node.js" NOT "open t
 
 On the **Posts** tab you can then:
 
-- filter by keyword chip, "has email", status (new / reviewed / contacted / ignored), hide excluded, free-text search
+- filter by keyword chip, contact (any / has email or link / has email / has link / no email, no link), status (new / reviewed / contacted / ignored), hide excluded, free-text search
 - click an email to copy it, or press **Email** to open a mailto draft
 - **Copy all details** of a post (author, profile, post URL, date, emails, links, keywords, status, notes, full text) for pasting into an email or notes
 - set a status and write notes per post (who you contacted, what they said)
@@ -73,10 +73,10 @@ Running autofill also records the application in the **Log** tab (company derive
 
 | Area | State as of 2026-11-13 |
 | --- | --- |
-| Build, type check, unit tests | Passing (`npm run build`, `npm test`, 42 tests incl. server round trip) |
+| Build, type check, unit tests | Passing (`npm run build`, `npm test`, 46 tests incl. server round trip) |
 | Local SQLite server | Built and tested (unit + smoke). `npm run server` |
 | Loaded in Chrome | Loaded by Ayush; first extraction attempt captured nothing (cause not yet known, Diagnose page added to find out) |
-| LinkedIn extraction on a live page | **Working on content search, with gaps.** First live run of the structural fallback (2026-11-13) stored 37 posts: author, profile, text, emails and approximate time correct on 34. Fixed after that run: video posts stored the video player's control text as the post body, `/safety/go` links were not unwrapped. Still open: no post link in the page for most posts (see Known limits). Not yet tried on the feed. No page sample saved yet |
+| LinkedIn extraction on a live page | **Working on content search, with gaps.** First live run of the structural fallback (2026-11-13) stored 37 posts: author, profile, text, emails and approximate time correct on 34. Fixed after that run: video posts stored the video player's control text as the post body, `/safety/go` links were not unwrapped. Still open: no post link in the page for most posts (see Known limits). Not yet tried live: Extract N / More, random scroll pause, inner-container scrolling, text-based "Show more results". Not yet tried on the feed. No page sample saved yet |
 | Greenhouse / Lever / Workday adapters | **Not yet verified** against real postings; written from each platform's known field ids |
 | Backend / sync | Not started (Phase 2) |
 | AI features | Hooks only, no model wired (Phase 3) |
@@ -146,9 +146,10 @@ The profile for Brijesh was transcribed by hand from `Downloads/resume/04_Source
 ### LinkedIn
 
 1. Open the feed or a content search (`linkedin.com/search/results/content/?keywords=...`).
-2. Side panel > **Posts** > **Extract posts from this tab**. Progress shows the count. **Stop** at any time.
-3. Extraction ends when the post limit from Settings is reached, nothing new loads after three scrolls, or you stop it.
-4. Review on the Posts tab. Posts matching an exclude keyword are hidden by default (untick "hide excluded" to see them).
+2. Side panel > **Posts**. Type the number of posts to capture (default 200, remembered) and press **Extract**: it starts from the top of the results, scrolls with a random pause between scrolls, and stores every batch as it goes. Progress shows "Captured N of M. Next scroll in 4.2 s". **Stop** at any time; everything captured so far is already stored.
+3. Press **More (+20)** to capture the next 20 posts not yet captured on this page. It continues from where the last Extract or More stopped (the page remembers what it sent until its URL changes or the tab reloads), so pressing More repeatedly walks down the results. Pressing **Extract** again starts from the top.
+4. A run ends when it has its count, nothing new loads after three scrolls, or you stop it. The final status line says which.
+5. Review on the Posts tab. Posts matching an exclude keyword are hidden by default (untick "hide excluded" to see them). Links are shown open on each card; the contact filter finds posts with a link but no email.
 
 ### Autofill
 
@@ -171,8 +172,10 @@ Applications appear here after autofill, or add one by URL. Status values: draft
 | Include keywords | hiring, node.js, nodejs, react, full stack, backend, mern, immediate joiner, bengaluru, bangalore | Case-insensitive phrase match against post text + author headline. Hits are shown as chips and usable as filters |
 | Exclude keywords | open to work, looking for a job | Matching posts are stored but hidden by default |
 | Store only posts that hit an include keyword | off | When on, the background drops non-matching new posts instead of storing them |
-| Stop after N posts | 200 | Extraction limit per run |
-| Wait after each scroll (ms) | 1500 | How long to wait for LinkedIn to render more posts |
+| Posts to capture per Extract | 200 | Also the number box on the Posts tab, which saves back here |
+| Posts to capture per More press | 20 | Next N posts not yet captured on the page |
+| Pause between scrolls, at least / at most (s) | 3 / 7 | A random time in this range before each scroll, so the pace looks like reading. Raise it for long runs |
+| Wait for new posts after each scroll, at most (ms) | 1500 | How long to wait for LinkedIn to render more posts after a scroll |
 | Scroll to load more | on | Off = capture only what is already on screen |
 | Click "...more" | on | Expand truncated posts before capture |
 | Only fill empty fields | on | Autofill never overwrites a value |
@@ -275,7 +278,8 @@ job-hunt-extension/
 │   │   │   ├── diagnose.ts       page structure report for fixing selectors (no text)
 │   │   │   ├── structure.ts      class-free card/author/text/time detection for the newer markup
 │   │   │   ├── sample.ts         full page sample (HTML + id scan) sent to the server
-│   │   │   └── index.ts          entry: extraction loop, messages
+│   │   │   ├── extract.ts        extraction loop: Extract / More, page session, random pause (unit-tested)
+│   │   │   └── index.ts          entry: messages, wires extract.ts to chrome messaging
 │   │   └── autofill/
 │   │       ├── adapters/         Adapter.ts (interface + locators), greenhouse.ts, lever.ts, workday.ts, index.ts (registry)
 │   │       ├── setters.ts        text / select / checkbox / radio / combobox
@@ -313,7 +317,7 @@ Path aliases: `@shared/*` -> `src/shared/*`, `@profile/*` -> `profile/*` (set in
 | Message | From -> To | Purpose |
 | --- | --- | --- |
 | `PING` | any | liveness check, returns where it answered |
-| `LINKEDIN_EXTRACT_START` | panel -> LinkedIn content | start with `ExtractOptions` |
+| `LINKEDIN_EXTRACT_START` | panel -> LinkedIn content | start with `ExtractOptions` and `mode` (`fresh` = Extract, `more` = More) |
 | `LINKEDIN_EXTRACT_STOP` | panel -> LinkedIn content | stop after the current round |
 | `LINKEDIN_STATUS` | panel -> LinkedIn content | running flag + post count on page |
 | `LINKEDIN_DIAGNOSE` | panel -> LinkedIn content | selector hit counts + structural outline of the first cards (no text), for fixing selectors |
@@ -330,10 +334,10 @@ To add a message: add a key to `MessageMap`, a handler in the receiving context,
 
 ## LinkedIn extraction internals
 
-1. The panel reads `settings.extract` and sends `LINKEDIN_EXTRACT_START`.
-2. The content script loops: `expandAll()` clicks every "...more" button (by class, by aria-label, or by button text as a fallback), `findPostCards()` returns top-level cards (nested reshares excluded), `parsePostCard()` builds an `ExtractedPost`.
+1. The panel reads `settings.extract` (with the Posts-tab number as `maxPosts`) and sends `LINKEDIN_EXTRACT_START` with `mode` `fresh` (Extract) or `more` (More).
+2. The content script runs `runExtraction()` (`extract.ts`). A page session (`id -> text length sent`) lives in the content script until the URL changes or the tab reloads. `fresh` clears it and counts up to `maxPosts`; `more` keeps it and counts only posts not in it, up to `moreBatch`. Re-sent posts (text grew) never count. Each round: `expandAll()` clicks every "...more" button (by class, by aria-label, or by button text as a fallback), `findPostCards()` returns top-level cards (nested reshares excluded), `parsePostCard()` builds an `ExtractedPost`.
 3. A post is re-sent when its text grew since the last send (it was expanded). The background `mergePost` keeps the longest text, unions emails, takes the links from the parse with the longest text (so re-extracting after a parser fix replaces wrong links; a shorter parse only adds links), keeps the first captured status and notes, and re-applies keyword tags. Re-extracting never removes a stored post: a post whose id changes (its text changed) is stored as a new row next to the old one.
-4. `scrollForMore()` scrolls the window to the bottom and scrolls the last post into view (which also scrolls an inner results container, if LinkedIn uses one), clicks any "Show more results" button (known selectors, else a button in `<main>` whose text or aria-label matches `SEL.loadMoreTextPattern`, e.g. "Show more results", "Load more posts"), and waits up to `scrollDelayMs` for growth. Growth = page height, `<main>` height or `<main>` link count went up.
+4. `scrollForMore()` scrolls the window to the bottom and scrolls the last post into view (which also scrolls an inner results container, if LinkedIn uses one), clicks any "Show more results" button (known selectors, else a button in `<main>` whose text or aria-label matches `SEL.loadMoreTextPattern`, e.g. "Show more results", "Load more posts"), and waits up to `scrollDelayMs` for growth. Growth = page height, `<main>` height or `<main>` link count went up. Before each scroll the loop pauses a random `pauseMinMs`..`pauseMaxMs` (default 3-7 s), checking Stop every 250 ms.
 5. Stops on: post limit, three idle rounds with no growth, stop request, or error. Every stop reports a message to the panel.
 
 Post id and URL come from the `data-urn` / `data-id` / `componentkey` / `data-entity-urn` attribute (`urn:li:activity:<id>`, also inside `urn:li:aggregate:(...)` wrappers). The timestamp is `Number(BigInt(id) >> 22n)` milliseconds since epoch (ids are 63 bits; the top 41 are the time).
@@ -478,3 +482,4 @@ These apply to **every agent and every person** who edits this repository, inclu
 | 2026-11-13 | Checked the first live extraction (37 posts in SQLite) and fixed what it showed: video posts took the video.js control bar (`dir="ltr"`, "Current Time 0:00 / Duration…") as the body, which also split one post into two ids, so the player is now excluded (`MEDIA_PLAYER` in `selectors.ts`); post URNs are read from URL-encoded attributes (group links); `/safety/go` links are unwrapped (`REDIRECT_PATHS`); group/services links and auto-linked words (B.Tech, Node.js) are dropped; `urnToDate` shifted by 23 bits instead of 22, which dated every real URN to 1998 and left `postedAt` empty. Tests: 38. | Claude Opus 5.5 (Claude Code), requested by Ayush |
 | 2026-11-13 | Second live run (01:06 IST) re-saved 21 of the 37 posts under the same ids (ids stable across runs) with the new build, but old wrapped links stayed because `mergePost` unioned links. `mergePost` now takes links from the parse with the most text and unions only for shorter parses. Tests: 39. | Claude Opus 5.5 (Claude Code), requested by Ayush |
 | 2026-11-13 | Posts now record `lastSeenAt` and `sourceUrls[]` (every search that showed the post; `capturedAt`/`sourceUrl` stay the first). CSV adds `urlKind`, `postedAtApprox`, `lastSeenAt`, `sourceUrls`; "Copy all details" adds capture/last-seen time and searches; SQL `posts` view adds `url_kind`, `posted_at_approx`, `posted_label`, `captured_at`, `last_seen_at`, `source_urls` and is recreated on server start. Scrolling: last post scrolled into view (inner scroll containers), "Show more results" also found by text/aria-label (`SEL.loadMoreTextPattern`), growth measured on `<main>` too. Tests: 42. | Claude Opus 5.5 (Claude Code), requested by Ayush |
+| 2026-11-13 | Posts tab: number box + **Extract** (capture N from the top, saved to `settings.extract.maxPosts`) and **More (+20)** (next `moreBatch` posts not yet captured on the page); random pause between scrolls (`pauseMinMs`/`pauseMaxMs`, default 3-7 s) and new Settings fields; loop moved to `src/content/linkedin/extract.ts` (`runExtraction`, page session, `pickPause`); `LINKEDIN_EXTRACT_START` takes `mode`. Contact filter (any / email or link / email / link / neither) replaces "has email"; stored counts show posts with link and with neither; links shown open on cards. Tests: 46. | Claude Opus 5.5 (Claude Code), requested by Ayush |

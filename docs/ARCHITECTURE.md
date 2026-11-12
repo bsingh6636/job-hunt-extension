@@ -10,7 +10,7 @@ src/shared/               code every context may import; never touches the DOM o
   posts.ts                merge + keyword tagging for captured posts
   utils/                  email regex, csv, dom helpers, keyword matching, logging
 src/background/           service worker: message router, stores captured posts
-src/content/linkedin/     selectors.ts (all selectors + STRUCT patterns), expand.ts, parse.ts, structure.ts (class-free), diagnose.ts, sample.ts, index.ts
+src/content/linkedin/     selectors.ts (all selectors + STRUCT patterns), expand.ts, parse.ts, structure.ts (class-free), extract.ts (loop), diagnose.ts, sample.ts, index.ts
 src/content/autofill/     adapters/ (data), setters.ts (mutation), engine.ts (orchestration), ai/ (hooks), index.ts
 src/sidepanel/            React UI: Posts, Autofill, Profile, Log, Settings
 server/                   local storage server: node:sqlite + node:http, zero deps, 127.0.0.1:4777; page sample files
@@ -57,10 +57,10 @@ The server (`server/`) stores every collection in one `documents(collection, id,
 
 ## LinkedIn extraction flow
 
-1. Side panel sends `LINKEDIN_EXTRACT_START` with options from Settings.
-2. Content script loops: `expandAll()` clicks every "...more", `findPostCards()` returns top-level cards, `parsePostCard()` turns each into an `ExtractedPost`.
+1. Side panel sends `LINKEDIN_EXTRACT_START` with options from Settings and `mode`: `fresh` (Extract N from the top) or `more` (next `moreBatch` posts not yet sent from this page; the content script keeps a page session until the URL changes).
+2. Content script (`extract.ts`, `runExtraction`) loops: `expandAll()` clicks every "...more", `findPostCards()` returns top-level cards, `parsePostCard()` turns each into an `ExtractedPost`.
 3. Posts whose text grew since last send are re-sent; background `mergePost` keeps the longest text, unions emails, takes links from the parse with the most text (unions them only for a shorter parse), and preserves `status` and `notes`.
-4. `scrollForMore()` scrolls the window and the last post into view, clicks "Show more results" (by selector or by text), and waits for the page or `<main>` to grow. Stops after the configured count, three idle rounds, or `LINKEDIN_EXTRACT_STOP`.
+4. `scrollForMore()` scrolls the window and the last post into view, clicks "Show more results" (by selector or by text), and waits for the page or `<main>` to grow, after a random `pauseMinMs`..`pauseMaxMs` pause. Each batch is stored as soon as it is parsed. Stops after the run's count, three idle rounds, or `LINKEDIN_EXTRACT_STOP`.
 
 The post timestamp comes from the activity id (top 41 bits are epoch ms), which is exact where LinkedIn shows "3d".
 

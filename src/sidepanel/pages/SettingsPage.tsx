@@ -79,11 +79,25 @@ export function SettingsPage() {
 
       <h3>Extraction</h3>
       <label className="field">
-        <span>Stop after this many posts</span>
+        <span>Posts to capture per Extract (also editable on the Posts tab)</span>
         <input type="number" min={1} value={form.extract.maxPosts} onChange={(e) => num('maxPosts', e.target.value)} />
       </label>
       <label className="field">
-        <span>Wait for new posts after each scroll (ms)</span>
+        <span>Posts to capture per More press</span>
+        <input type="number" min={1} value={form.extract.moreBatch} onChange={(e) => num('moreBatch', e.target.value)} />
+      </label>
+      <div className="row">
+        <label className="field">
+          <span>Pause between scrolls, at least (seconds)</span>
+          <input type="number" min={0.5} step={0.5} value={form.extract.pauseMinMs / 1000} onChange={(e) => num('pauseMinMs', String(Number(e.target.value) * 1000))} />
+        </label>
+        <label className="field">
+          <span>at most (seconds). A random time in between is used each scroll</span>
+          <input type="number" min={0.5} step={0.5} value={form.extract.pauseMaxMs / 1000} onChange={(e) => num('pauseMaxMs', String(Number(e.target.value) * 1000))} />
+        </label>
+      </div>
+      <label className="field">
+        <span>Wait for new posts after each scroll, at most (ms)</span>
         <input type="number" min={300} step={100} value={form.extract.scrollDelayMs} onChange={(e) => num('scrollDelayMs', e.target.value)} />
       </label>
       <label className="check">
