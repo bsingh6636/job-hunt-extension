@@ -1,5 +1,6 @@
 import type { Profile } from '@profile/profile.schema';
-export type { Profile };
+import type { ExperienceRange } from './utils/jobtext';
+export type { Profile, ExperienceRange };
 
 /** One LinkedIn post captured from the feed or a content search. */
 export interface ExtractedPost {
@@ -32,9 +33,16 @@ export interface ExtractedPost {
   capturedAt: string;
   /** Latest time an extraction saw this post. Missing on posts captured before 2026-11-13 = capturedAt. */
   lastSeenAt?: string;
-  /** The page the post was first captured from, usually the search URL. */
-  sourceUrl: string;
-  /** Every page (search) the post was captured from, oldest first. Missing on posts captured before 2026-11-13 = [sourceUrl]. */
+  /**
+   * Every page (search or feed) that showed the post, oldest first: ids of
+   * `SearchPage`s in the `searches` collection, so the long URL is stored
+   * once. [0] is where it was first captured. Read it with searchIdsOf(),
+   * which also handles the legacy fields below.
+   */
+  searchIds?: string[];
+  /** Legacy (posts stored before searchIds existed): the first page's URL. The next capture moves it into `searches`. */
+  sourceUrl?: string;
+  /** Legacy: every page's URL, oldest first. The next capture moves them into `searches`. */
   sourceUrls?: string[];
   /** Keywords from settings.keywords.include found in the text. */
   matchedKeywords: string[];
@@ -42,6 +50,22 @@ export interface ExtractedPost {
   excludedBy: string[];
   status: PostStatus;
   notes?: string;
+}
+
+/**
+ * A LinkedIn page posts were captured from (a content search or the feed),
+ * stored once in the `searches` collection. Posts refer to it by id.
+ */
+export interface SearchPage {
+  /** "search:<hash>" of `url` (searchIdOf in src/shared/searches.ts). */
+  id: string;
+  /** The page URL without per-visit params (sid, origin, ...). Opening it runs the search again. */
+  url: string;
+  /** The decoded search query, e.g. `"hiring" MERN NOT SENIOR`. Missing on the feed. */
+  keywords?: string;
+  /** First and latest time posts were captured from this page. */
+  firstSeenAt: string;
+  lastSeenAt: string;
 }
 
 export type PostStatus = 'new' | 'reviewed' | 'contacted' | 'ignored';
@@ -63,6 +87,67 @@ export interface ExtractOptions {
 
 /** "fresh" = Extract (from the top, up to maxPosts); "more" = More (next moreBatch not yet captured on this page). */
 export type ExtractMode = 'fresh' | 'more';
+
+/**
+ * One job post seen in WhatsApp group chats (web.whatsapp.com). Stored in its
+ * own `whatsappPosts` collection, never mixed with LinkedIn posts.
+ */
+export interface WhatsAppPost {
+  /** "wa:<hash>" of the message text, so the same post forwarded to several groups is one row. */
+  id: string;
+  /** Full message text after "Read more", line breaks and emoji kept. */
+  text: string;
+  emails: string[];
+  /** Phone numbers in the text as "+<country><number>", e.g. "+917087706624". */
+  phones: string[];
+  links: string[];
+  /** Years of experience the post asks for, read from the text. Missing when it says nothing. */
+  experience?: ExperienceRange;
+  /** Group (chat) name of the earliest sighting. */
+  chat: string;
+  /** Sender of the earliest sighting: contact name, push name or phone as WhatsApp shows it. */
+  sender: { name: string; phone?: string };
+  /** Message time of the earliest sighting, from WhatsApp's "[2:48 pm, 13/11/2026]" stamp. */
+  postedAt?: string;
+  /** Every message that carried this text (group, sender, time), earliest first, at most 50. */
+  sightings: WhatsAppSighting[];
+  capturedAt: string;
+  lastSeenAt: string;
+  matchedKeywords: string[];
+  excludedBy: string[];
+  status: PostStatus;
+  notes?: string;
+}
+
+export interface WhatsAppSighting {
+  /** WhatsApp's own message id (the data-id attribute). */
+  messageId: string;
+  chat: string;
+  /** "1203...@g.us" for groups. */
+  chatId?: string;
+  sender: string;
+  senderPhone?: string;
+  postedAt?: string;
+  forwarded?: boolean;
+}
+
+export interface WhatsAppExtractOptions {
+  /** Job posts to capture when Extract is pressed (other messages are read but not stored). */
+  maxPosts: number;
+  /** Job posts to capture each time More is pressed (continues further back in the chat). */
+  moreBatch: number;
+  /** Stop at messages older than this many days. 0 = no limit. */
+  maxAgeDays: number;
+  /** Store only messages that look like job posts (see isJobPost). Off = every text message. */
+  onlyJobPosts: boolean;
+  scroll: boolean;
+  /** Longest wait for WhatsApp to load older messages after a scroll up. */
+  scrollDelayMs: number;
+  pauseMinMs: number;
+  pauseMaxMs: number;
+  /** Click "Read more" on long messages. */
+  expand: boolean;
+}
 
 export interface ExtractProgress {
   running: boolean;
@@ -127,9 +212,10 @@ export interface UnknownField {
 
 export interface Settings {
   keywords: { include: string[]; exclude: string[] };
-  /** When true the background drops posts with no include-keyword hit. */
+  /** When true the background drops new LinkedIn and WhatsApp posts with no include-keyword hit. */
   captureOnlyMatching: boolean;
   extract: ExtractOptions;
+  whatsapp: WhatsAppExtractOptions;
   autofill: { fillEmptyOnly: boolean; highlight: boolean };
   /**
    * Where posts, applications and fill reports live.
@@ -157,6 +243,17 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   captureOnlyMatching: false,
   extract: { maxPosts: 200, moreBatch: 20, scroll: true, scrollDelayMs: 1500, pauseMinMs: 3000, pauseMaxMs: 7000, expand: true },
+  whatsapp: {
+    maxPosts: 100,
+    moreBatch: 50,
+    maxAgeDays: 30,
+    onlyJobPosts: true,
+    scroll: true,
+    scrollDelayMs: 3000,
+    pauseMinMs: 1500,
+    pauseMaxMs: 4000,
+    expand: true,
+  },
   autofill: { fillEmptyOnly: true, highlight: true },
   storage: { mode: 'server', serverUrl: 'http://127.0.0.1:4777' },
 };

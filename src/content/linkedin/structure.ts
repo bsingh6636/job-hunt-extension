@@ -1,3 +1,4 @@
+import { hash64 } from '@shared/utils/hash';
 import { collapseDoubled } from '@shared/utils/dom';
 import { SEL, STRUCT } from './selectors';
 
@@ -316,15 +317,6 @@ export function findTextStructural(card: Element, opts: { after: Element | null;
   return best;
 }
 
-function fnv1a(input: string, seed: number): string {
-  let hash = seed >>> 0;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(36);
-}
-
 /**
  * Stable id when the page exposes no post URN: author + the first 40
  * letters/digits of the text. The prefix is the same before and after
@@ -333,7 +325,7 @@ function fnv1a(input: string, seed: number): string {
 export function contentId(authorKey: string, text: string): string {
   const prefix = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 40);
   const key = `${authorKey.toLowerCase()}|${prefix}`;
-  return `text:${fnv1a(key, 0x811c9dc5)}${fnv1a(key, 0x9e3779b9)}`;
+  return `text:${hash64(key)}`;
 }
 
 /** Best link when the post URL is unknown: the author's activity page. */

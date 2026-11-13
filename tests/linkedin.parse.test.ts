@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { findPostCards, parsePostCard, readUrn, urnToDate } from '../src/content/linkedin/parse';
+import { searchIdOf } from '../src/shared/searches';
 import { PAGE, activityIdFor } from './fixtures/linkedin-post';
 
 const ctx = { sourceUrl: 'https://www.linkedin.com/search/results/content/?keywords=hiring', now: new Date('2026-11-12T00:00:00Z') };
@@ -35,7 +36,8 @@ describe('LinkedIn parse', () => {
     expect(post.links).toContain('https://lnkd.in/gXYZ123');
     expect(post.links.some((l) => l.includes('hashtag'))).toBe(false);
     expect(post.status).toBe('new');
-    expect(post.sourceUrl).toBe(ctx.sourceUrl);
+    expect(post.searchIds).toEqual([searchIdOf(ctx.sourceUrl)]);
+    expect(post.sourceUrl).toBeUndefined();
   });
 
   it('keeps reshare commentary and drops the nested original as a separate post', () => {

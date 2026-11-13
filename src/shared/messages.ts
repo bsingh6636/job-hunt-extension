@@ -1,6 +1,7 @@
-import type { ExtractMode, ExtractOptions, ExtractProgress, ExtractedPost, FillReport, Profile } from './types';
+import type { ExtractMode, ExtractOptions, ExtractProgress, ExtractedPost, FillReport, Profile, WhatsAppExtractOptions, WhatsAppPost } from './types';
 import type { DiagnoseReport } from '../content/linkedin/diagnose';
 import type { PageSample } from '../content/linkedin/sample';
+import type { WhatsAppDiagnoseReport } from '../content/whatsapp/diagnose';
 
 /**
  * Every message the extension sends, with its request payload and response.
@@ -24,7 +25,20 @@ export interface MessageMap {
 
   // LinkedIn content script -> background / side panel (broadcast)
   LINKEDIN_EXTRACT_PROGRESS: { req: { progress: ExtractProgress }; res: void };
-  POSTS_CAPTURED: { req: { posts: ExtractedPost[] }; res: { stored: number; dropped: number } };
+  /** `pageUrl` is the search/feed page the batch came from; the background stores it once in `searches`. */
+  POSTS_CAPTURED: { req: { posts: ExtractedPost[]; pageUrl: string }; res: { stored: number; dropped: number } };
+
+  // Side panel -> WhatsApp content script (web.whatsapp.com)
+  WHATSAPP_EXTRACT_START: { req: { options: WhatsAppExtractOptions; mode?: ExtractMode }; res: { started: boolean; reason?: string } };
+  WHATSAPP_EXTRACT_STOP: { req: Record<string, never>; res: { ok: true } };
+  /** Which chat is open and how many messages are loaded. */
+  WHATSAPP_STATUS: { req: Record<string, never>; res: { running: boolean; chat: string | null; messagesOnPage: number } };
+  /** Structural description of the open chat for fixing selectors (no message text); see content/whatsapp/diagnose.ts. */
+  WHATSAPP_DIAGNOSE: { req: Record<string, never>; res: WhatsAppDiagnoseReport };
+
+  // WhatsApp content script -> background / side panel (broadcast)
+  WHATSAPP_EXTRACT_PROGRESS: { req: { progress: ExtractProgress }; res: void };
+  WHATSAPP_CAPTURED: { req: { posts: WhatsAppPost[] }; res: { stored: number; dropped: number } };
 
   // Side panel -> autofill content script
   AUTOFILL_DETECT: { req: Record<string, never>; res: { adapter: string | null; fieldsOnPage: number } };

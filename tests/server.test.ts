@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
+import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../server/app.mjs';
 import { createSampleStore } from '../server/samples.mjs';
 import { createStore } from '../server/store.mjs';
@@ -71,6 +72,67 @@ describe('local storage server', () => {
 
     await json('PUT', '/api/applications/app_1', { id: 'app_1', company: 'Acme' });
     expect((await json('DELETE', '/api/applications')).body).toEqual({ removed: 1 });
+  });
+
+  it('keeps WhatsApp posts in their own collection with a whatsapp_posts view', async () => {
+    const wa = {
+      id: 'wa:abc',
+      text: 'Hiring Node.js developer',
+      chat: 'Group A',
+      sender: { name: 'Ravi', phone: '+919800000001' },
+      experience: { min: 2, max: 4 },
+      emails: ['jobs@example.org'],
+      phones: ['+919876543210'],
+      links: [],
+      sightings: [
+        { messageId: 'm1', chat: 'Group A', sender: 'Ravi' },
+        { messageId: 'm2', chat: 'Group B', sender: 'Ravi' },
+        { messageId: 'm3', chat: 'Group A', sender: 'Ravi' },
+      ],
+      status: 'new',
+    };
+    expect((await json('POST', '/api/whatsappPosts/bulk', [wa])).body).toEqual({ stored: 1 });
+    expect((await json('GET', '/api/whatsappPosts')).body).toEqual([wa]);
+    expect((await json('GET', '/api/posts')).body).toEqual([]); // never mixed with LinkedIn posts
+
+    const db = new DatabaseSync(store.path, { readOnly: true });
+    const row = db.prepare('SELECT chat, sender, sender_phone, exp_min, exp_max, phones, times_seen, chats FROM whatsapp_posts').get();
+    db.close();
+    expect({ ...row }).toEqual({
+      chat: 'Group A',
+      sender: 'Ravi',
+      sender_phone: '+919800000001',
+      exp_min: 2,
+      exp_max: 4,
+      phones: '["+919876543210"]',
+      times_seen: 3,
+      chats: '["Group A","Group B"]',
+    });
+    expect((await json('DELETE', '/api/whatsappPosts')).body).toEqual({ removed: 1 });
+  });
+
+  it('keeps search URLs once in searches and resolves them in the posts view', async () => {
+    const url = 'https://www.linkedin.com/search/results/content/?keywords=hiring';
+    const page = { id: 'search:s1', url, keywords: 'hiring', firstSeenAt: '2026-11-13T01:00:00.000Z', lastSeenAt: '2026-11-13T02:00:00.000Z' };
+    expect((await json('POST', '/api/searches/bulk', [page])).body).toEqual({ stored: 1 });
+    await json('POST', '/api/posts/bulk', [
+      { id: 'text:a', text: 'a', searchIds: ['search:s1', 'search:gone'], status: 'new' },
+      { id: 'text:b', text: 'b', sourceUrl: 'https://old.example/', status: 'new' }, // stored before searchIds existed
+    ]);
+
+    const db = new DatabaseSync(store.path, { readOnly: true });
+    const posts = db.prepare('SELECT id, source_url, source_urls, search_ids FROM posts ORDER BY id').all();
+    const searches = db.prepare('SELECT id, keywords, url, first_seen_at, last_seen_at, posts FROM searches').all();
+    db.close();
+    expect(posts.map((r) => ({ ...r }))).toEqual([
+      { id: 'text:a', source_url: url, source_urls: JSON.stringify([url, 'search:gone']), search_ids: '["search:s1","search:gone"]' },
+      { id: 'text:b', source_url: 'https://old.example/', source_urls: '["https://old.example/"]', search_ids: null },
+    ]);
+    expect(searches.map((r) => ({ ...r }))).toEqual([
+      { id: 'search:s1', keywords: 'hiring', url, first_seen_at: page.firstSeenAt, last_seen_at: page.lastSeenAt, posts: 1 },
+    ]);
+    await json('DELETE', '/api/posts');
+    await json('DELETE', '/api/searches');
   });
 
   it('answers CORS preflight', async () => {

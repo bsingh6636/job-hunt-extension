@@ -1,3 +1,4 @@
+import { searchIdOf } from '@shared/searches';
 import type { ExtractedPost } from '@shared/types';
 import { collapseDoubled, queryFirst, textWithBreaks } from '@shared/utils/dom';
 import { extractEmails, extractUrlsFromText } from '@shared/utils/email';
@@ -22,6 +23,7 @@ import {
 export type { Urn };
 
 export interface ParseContext {
+  /** The page being parsed (search or feed). Resolves relative links; the post stores its searches id. */
   sourceUrl: string;
   now?: Date;
 }
@@ -236,8 +238,7 @@ export function parsePostCard(card: HTMLElement, ctx: ParseContext): ExtractedPo
     postedAtLabel: postedAtLabel || undefined,
     capturedAt: now.toISOString(),
     lastSeenAt: now.toISOString(),
-    sourceUrl: ctx.sourceUrl,
-    sourceUrls: [ctx.sourceUrl],
+    searchIds: [searchIdOf(ctx.sourceUrl)],
     matchedKeywords: [],
     excludedBy: [],
     status: 'new',

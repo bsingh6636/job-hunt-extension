@@ -2,6 +2,19 @@
 
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Random pause in [min, max] ms; min and max may be given in either order. */
+export function pickPause(minMs: number, maxMs: number, random: () => number = Math.random): number {
+  const lo = Math.max(0, Math.min(minMs, maxMs));
+  const hi = Math.max(minMs, maxMs);
+  return Math.round(lo + (hi - lo) * random());
+}
+
+/** Wait `ms`, checking `shouldStop` every 250 ms so Stop takes effect quickly. */
+export async function pauseUnlessStopped(ms: number, shouldStop: () => boolean): Promise<void> {
+  const end = Date.now() + ms;
+  while (Date.now() < end && !shouldStop()) await sleep(Math.min(250, end - Date.now()));
+}
+
 /** First element matching any selector in the list, in order. */
 export function queryFirst<T extends Element = HTMLElement>(root: ParentNode, selectors: readonly string[]): T | null {
   for (const sel of selectors) {

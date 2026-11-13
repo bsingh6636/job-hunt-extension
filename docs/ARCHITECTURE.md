@@ -4,15 +4,17 @@
 manifest.config.ts        typed MV3 manifest (CRXJS builds every entry it references)
 profile/                  candidate profile schema (Zod) + example + real file (git-ignored)
 src/shared/               code every context may import; never touches the DOM of a page
-  types.ts                ExtractedPost, Application, FillReport, Settings
+  types.ts                ExtractedPost, WhatsAppPost, Application, FillReport, Settings
   messages.ts             typed message bus (MessageMap + sendToTab/sendToRuntime/onMessage)
   storage/                Repository interface; LocalRepository (chrome.storage); ApiRepository (HTTP to local server); SwitchingRepository picks by settings
-  posts.ts                merge + keyword tagging for captured posts
-  utils/                  email regex, csv, dom helpers, keyword matching, logging
-src/background/           service worker: message router, stores captured posts
+  posts.ts                merge + keyword tagging for captured LinkedIn posts
+  whatsapp.ts             merge (sightings across groups) + keyword tagging for WhatsApp posts
+  utils/                  email, phone, job-post/experience heuristics (jobtext), hash, csv, dom helpers, keyword matching, logging
+src/background/           service worker: message router, stores captured LinkedIn and WhatsApp posts
 src/content/linkedin/     selectors.ts (all selectors + STRUCT patterns), expand.ts, parse.ts, structure.ts (class-free), extract.ts (loop), diagnose.ts, sample.ts, index.ts
+src/content/whatsapp/     selectors.ts (all WhatsApp Web hooks), parse.ts, page.ts (Read more, scroll up), extract.ts (loop), diagnose.ts, index.ts
 src/content/autofill/     adapters/ (data), setters.ts (mutation), engine.ts (orchestration), ai/ (hooks), index.ts
-src/sidepanel/            React UI: Posts, Autofill, Profile, Log, Settings
+src/sidepanel/            React UI: Posts (LinkedIn), WhatsApp, Autofill, Profile, Log, Settings
 server/                   local storage server: node:sqlite + node:http, zero deps, 127.0.0.1:4777; page sample files
 tests/                    vitest + jsdom (extension) and node (server); fixtures are synthetic
 ```
@@ -22,8 +24,9 @@ tests/                    vitest + jsdom (extension) and node (server); fixtures
 | Context | Runs where | Reads/writes storage | Talks to |
 | --- | --- | --- | --- |
 | Content script (LinkedIn) | linkedin.com tab | no | background (`POSTS_CAPTURED`), side panel (`LINKEDIN_EXTRACT_PROGRESS`) |
+| Content script (WhatsApp) | web.whatsapp.com tab | no | background (`WHATSAPP_CAPTURED`), side panel (`WHATSAPP_EXTRACT_PROGRESS`) |
 | Content script (autofill) | ATS tab | no | answers side panel (`AUTOFILL_DETECT`, `AUTOFILL_RUN`) |
-| Background service worker | extension | yes | merges posts into `postsRepo` |
+| Background service worker | extension | yes | merges LinkedIn posts into `postsRepo`, WhatsApp posts into `whatsappRepo` |
 | Side panel | extension page | yes | asks content scripts via `chrome.tabs.sendMessage` |
 | Local storage server | Node process on the laptop | owns the SQLite file | answers HTTP from background and panel in server mode |
 
@@ -43,7 +46,7 @@ Content scripts never touch storage so that the storage backend can change witho
 
 Profile and settings always use `LocalValueStore`, because the settings decide the mode.
 
-The server (`server/`) stores every collection in one `documents(collection, id, data JSON, created_at, updated_at)` table and exposes `posts` and `applications` SQL views for humans. It binds 127.0.0.1 only and allows CORS from any origin because the extension origin is not predictable. Phase 2 reuses `ApiRepository` against a remote host with auth added.
+The server (`server/`) stores every collection in one `documents(collection, id, data JSON, created_at, updated_at)` table and exposes `posts`, `searches`, `whatsapp_posts` and `applications` SQL views for humans. LinkedIn posts (`posts`) and WhatsApp posts (`whatsappPosts`) are separate collections and never mixed. LinkedIn search/feed URLs live once each in `searches` (`SearchPage`, id = `search:<hash>` of the URL without per-visit params); a post keeps only `searchIds`, and the `posts` view joins the URLs back in. The background writes the page from `POSTS_CAPTURED.pageUrl` before the posts, so a stored post never points at a missing page. It binds 127.0.0.1 only and allows CORS from any origin because the extension origin is not predictable. Phase 2 reuses `ApiRepository` against a remote host with auth added.
 
 ## Diagnose
 
@@ -63,6 +66,17 @@ The server (`server/`) stores every collection in one `documents(collection, id,
 4. `scrollForMore()` scrolls the window and the last post into view, clicks "Show more results" (by selector or by text), and waits for the page or `<main>` to grow, after a random `pauseMinMs`..`pauseMaxMs` pause. Each batch is stored as soon as it is parsed. Stops after the run's count, three idle rounds, or `LINKEDIN_EXTRACT_STOP`.
 
 The post timestamp comes from the activity id (top 41 bits are epoch ms), which is exact where LinkedIn shows "3d".
+
+## WhatsApp extraction flow
+
+WhatsApp Web hashes its class names, so `src/content/whatsapp/selectors.ts` relies on the hooks WhatsApp's own copy/paste uses: `#main`, `data-id="false_<chat>@g.us_<msgId>_<sender>@c.us"` per message, `data-pre-plain-text="[2:48 pm, 13/11/2026] Sender: "` on the copyable block, and `span.selectable-text` for the body. Emoji are `<img alt>`, so `messageText` reads alt text.
+
+1. Side panel (WhatsApp tab) sends `WHATSAPP_EXTRACT_START` with `settings.whatsapp` and `mode` (`fresh` = Extract, `more` = More). WhatsApp Web keeps one URL for every chat, so the chat session (data-id -> text length sent) is keyed by the chat id from the first message's data-id, not by URL.
+2. `runWhatsAppExtraction` (`extract.ts`) loops: `expandReadMore()` clicks "Read more" (by text, innermost element, once each, remembered in a WeakSet so WhatsApp's DOM gets no extra attributes); `findMessageElements()` returns the outermost data-id element per message; messages are read newest first; `parseMessage()` skips your own messages, system notices and media without captions; `isJobPost()` keeps messages with 40+ characters and three job signals (hiring words, experience, location, CTC, email, phone, ...). Only job posts count towards the run's number; every message read counts towards the "messages read" figure.
+3. Each post's id is `wa:<hash>` of the first 300 letters/digits of its text, so the same post forwarded into several groups is one row. Background `mergeWhatsAppPost` adds a sighting per message (group, sender, time; max 50), keeps the longest text, unions emails and phones, and keeps status/notes.
+4. `loadOlder()` clicks any "older messages" button, scrolls the message list (first scrollable ancestor of a message, else a known container) down a little then to the top so WhatsApp sees a scroll event, and waits for the oldest loaded message to change. Stops after the run's count, at a message older than `maxAgeDays`, after three scrolls that load nothing, or on `WHATSAPP_EXTRACT_STOP`.
+
+`WHATSAPP_DIAGNOSE` returns counts, masked data-id and stamp shapes and a tag outline of one message, with no text, names or numbers, for fixing selectors from a paste.
 
 ## Autofill flow
 

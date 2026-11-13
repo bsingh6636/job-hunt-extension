@@ -47,6 +47,22 @@ The Diagnose report only describes structure. When LinkedIn changes its markup, 
 6. Open `http://127.0.0.1:4777/samples` and check the three samples are listed and "view page" shows the page. If the panel said the server was not reachable, the sample went to Downloads instead: move those `linkedin-sample-*.json` files to `exports/linkedin-samples/`.
 7. Optional, only if a sample's details (`.json`) show an empty `idScan`: DevTools > Network > Fetch/XHR, scroll the search results, find a request whose response contains `urn:li:activity`. Note its path (no headers, no cookies) and save its response body to `exports/linkedin-samples/network-1.txt`.
 
+## 2c. WhatsApp group extraction
+
+Built 2026-11-13 from WhatsApp Web's known structure; never run on a live page yet. Use your own account and a group you are in. The extension only reads and scrolls; it never types or sends.
+
+1. **Restart the storage server** (Ctrl+C, then `npm run server`): a server started before 2026-11-13 rejects WhatsApp posts. Open `https://web.whatsapp.com/` and log in. **Reload the tab** after loading or reloading the extension (if the extension card asks to allow the new WhatsApp permission, allow it).
+2. Click a job group in the chat list. Side panel > **WhatsApp**. The panel must show "Chat: <group name> · N messages loaded". **PASTE** whether the name is right and the N.
+3. Press **Diagnose chat**. The report is copied to the clipboard. It holds counts and shapes only, no message text, names or numbers. **PASTE** the whole JSON.
+4. Leave "job posts" at 100 and "back 30 days", press **Extract**. Watch the chat scroll up. **PASTE** the final status line ("Captured N of 100 job posts (M messages read, back to <date>)", "Reached messages older than 30 days", "No older messages loaded" or an error).
+5. Press **More (+50)** once. Check it continues further back instead of repeating. **PASTE** the final line.
+6. Look at three captured cards in the panel. For each: is the text complete (not cut at "Read more")? Do emoji show? Are group, sender and time right? Are the email and phone right? Is the "exp N yrs" chip right? **PASTE** yes/no per field.
+7. Check `http://127.0.0.1:4777/api/whatsappPosts` returns a JSON array. **PASTE** the count and one object with its emails and phones replaced by `x`.
+8. Open a second group that shares some forwarded posts with the first and press **Extract**. A forwarded post should appear once, with "also in 1 other group". **PASTE** yes/no.
+9. DevTools (F12) on the WhatsApp tab > Console, filter `[JobHunt]`. **PASTE** any errors.
+
+If step 2 shows "No chat open" or step 4 captures 0, the Diagnose JSON from step 3 is what the agent needs to fix `src/content/whatsapp/selectors.ts`. If the chat stops scrolling early, note whether WhatsApp showed a button about older messages on the phone, and its exact text.
+
 ## 3. Autofill
 
 1. Open any Greenhouse posting (`boards.greenhouse.io/...` or `job-boards.greenhouse.io/...`) and go to the application form. Or a Lever posting (`jobs.lever.co/...`) and press Apply.
@@ -56,4 +72,4 @@ The Diagnose report only describes structure. When LinkedIn changes its markup, 
 
 ## 4. What to do with the results
 
-Paste everything back to the agent that wrote the extension. The diagnose outline is enough to fix `src/content/linkedin/selectors.ts`; the fill report is enough to fix `src/content/autofill/adapters/*.ts`.
+Paste everything back to the agent that wrote the extension. The LinkedIn diagnose outline is enough to fix `src/content/linkedin/selectors.ts`, the WhatsApp diagnose report `src/content/whatsapp/selectors.ts`, and the fill report `src/content/autofill/adapters/*.ts`.

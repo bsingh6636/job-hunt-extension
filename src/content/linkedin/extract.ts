@@ -1,7 +1,9 @@
 import type { ExtractMode, ExtractOptions, ExtractProgress, ExtractedPost } from '@shared/types';
-import { sleep } from '@shared/utils/dom';
+import { pauseUnlessStopped, pickPause } from '@shared/utils/dom';
 import { expandAll, scrollForMore } from './expand';
 import { findPostCards, parsePostCard } from './parse';
+
+export { pickPause };
 
 /**
  * The extraction loop, without chrome.* calls so it runs in tests.
@@ -15,24 +17,13 @@ export interface PageSession {
 }
 
 export interface ExtractDeps {
-  send: (posts: ExtractedPost[]) => Promise<number>;
+  /** Store a batch; `pageUrl` is the search or feed page it came from. */
+  send: (posts: ExtractedPost[], pageUrl: string) => Promise<number>;
   report: (progress: Omit<ExtractProgress, 'running'>) => Promise<void>;
   shouldStop: () => boolean;
   session: PageSession;
   /** Injected for tests. */
   random?: () => number;
-}
-
-/** Random pause in [min, max] ms; min and max may be given in either order. */
-export function pickPause(minMs: number, maxMs: number, random: () => number = Math.random): number {
-  const lo = Math.max(0, Math.min(minMs, maxMs));
-  const hi = Math.max(minMs, maxMs);
-  return Math.round(lo + (hi - lo) * random());
-}
-
-async function pause(ms: number, shouldStop: () => boolean): Promise<void> {
-  const end = Date.now() + ms;
-  while (Date.now() < end && !shouldStop()) await sleep(Math.min(250, end - Date.now()));
 }
 
 /**
@@ -77,7 +68,7 @@ export async function runExtraction(options: ExtractOptions, mode: ExtractMode, 
 
     if (batch.length > 0) {
       idleRounds = 0;
-      stored += await deps.send(batch);
+      stored += await deps.send(batch, sourceUrl);
     } else {
       idleRounds++;
     }
@@ -93,7 +84,7 @@ export async function runExtraction(options: ExtractOptions, mode: ExtractMode, 
 
     const wait = pickPause(options.pauseMinMs, options.pauseMaxMs, deps.random);
     await status(`Captured ${done.size} of ${limit}. Next scroll in ${Math.round(wait / 100) / 10} s`);
-    await pause(wait, shouldStop);
+    await pauseUnlessStopped(wait, shouldStop);
     if (shouldStop()) break;
 
     const grew = await scrollForMore(options.scrollDelayMs, cards[cards.length - 1]);

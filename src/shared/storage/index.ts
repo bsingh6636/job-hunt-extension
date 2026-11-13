@@ -1,5 +1,5 @@
 import { onMessage, sendToRuntime } from '../messages';
-import type { Application, ExtractedPost, FillReport, Profile, Settings } from '../types';
+import type { Application, ExtractedPost, FillReport, Profile, SearchPage, Settings, WhatsAppPost } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 import { ApiRepository } from './ApiRepository';
 import { LocalRepository, LocalValueStore } from './LocalRepository';
@@ -10,7 +10,7 @@ import type { Entity, Repository } from './Repository';
  *
  * - settings and profile: always chrome.storage.local (the settings decide
  *   the storage mode, so they cannot live behind it)
- * - posts, applications, fill reports: SwitchingRepository, which routes to
+ * - posts, searches, WhatsApp posts, applications, fill reports: SwitchingRepository, which routes to
  *   the local SQLite server (default) or chrome.storage.local depending on
  *   settings.storage.mode. Call sites never know which.
  */
@@ -24,6 +24,7 @@ export async function getSettings(): Promise<Settings> {
     ...saved,
     keywords: { ...DEFAULT_SETTINGS.keywords, ...saved?.keywords },
     extract: { ...DEFAULT_SETTINGS.extract, ...saved?.extract },
+    whatsapp: { ...DEFAULT_SETTINGS.whatsapp, ...saved?.whatsapp },
     autofill: { ...DEFAULT_SETTINGS.autofill, ...saved?.autofill },
     storage: { ...DEFAULT_SETTINGS.storage, ...saved?.storage },
   };
@@ -109,6 +110,10 @@ class SwitchingRepository<T extends Entity> implements Repository<T> {
 }
 
 export const postsRepo: Repository<ExtractedPost> = new SwitchingRepository<ExtractedPost>('posts');
+/** LinkedIn search/feed pages posts were captured from, one row per URL; posts point here with searchIds. */
+export const searchesRepo: Repository<SearchPage> = new SwitchingRepository<SearchPage>('searches');
+/** WhatsApp group job posts: a separate collection, never mixed with LinkedIn posts. */
+export const whatsappRepo: Repository<WhatsAppPost> = new SwitchingRepository<WhatsAppPost>('whatsappPosts');
 export const applicationsRepo: Repository<Application> = new SwitchingRepository<Application>('applications');
 export const fillReportsRepo: Repository<FillReport & { id: string }> = new SwitchingRepository<FillReport & { id: string }>('fillReports');
 

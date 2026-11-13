@@ -24,7 +24,7 @@ import { isSampleId, samplesIndexHtml } from './samples.mjs';
  * Collections are validated against ALLOWED so a typo cannot create junk.
  * CORS is wide open because the server binds to 127.0.0.1 only.
  */
-export const ALLOWED = new Set(['posts', 'applications', 'fillReports']);
+export const ALLOWED = new Set(['posts', 'searches', 'whatsappPosts', 'applications', 'fillReports']);
 
 const CORS = {
   'access-control-allow-origin': '*',

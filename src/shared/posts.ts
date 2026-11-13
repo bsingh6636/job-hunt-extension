@@ -1,4 +1,5 @@
-import { getSettings, postsRepo } from './storage';
+import { hasLegacyUrls, liftLegacyUrls, searchBook, searchIdsOf } from './searches';
+import { getSettings, postsRepo, searchesRepo } from './storage';
 import type { ExtractedPost } from './types';
 import { matchKeywords } from './utils/keywords';
 
@@ -32,8 +33,8 @@ export function mergePost(existing: ExtractedPost | undefined, incoming: Extract
     urlKind: existing.urlKind && existing.urlKind !== 'post' && incoming.urlKind === 'post' ? incoming.urlKind : existing.urlKind,
     postedAtLabel: existing.postedAtLabel ?? incoming.postedAtLabel,
     lastSeenAt: incoming.lastSeenAt ?? incoming.capturedAt,
-    sourceUrls: union(existing.sourceUrls ?? [existing.sourceUrl], incoming.sourceUrls ?? [incoming.sourceUrl]),
-    // status, notes, capturedAt, sourceUrl stay as first captured
+    searchIds: union(searchIdsOf(existing), searchIdsOf(incoming)),
+    // status, notes, capturedAt and searchIds[0] stay as first captured
   };
 }
 
@@ -44,23 +45,49 @@ export function applyKeywords(post: ExtractedPost, include: string[], exclude: s
   return post;
 }
 
-export async function mergeCapturedPosts(posts: ExtractedPost[]): Promise<{ stored: number; dropped: number }> {
+/**
+ * Store a batch from the content script. `pageUrl` (the search or feed the
+ * batch came from) is written once to `searches`; posts keep only its id.
+ */
+export async function mergeCapturedPosts(posts: ExtractedPost[], pageUrl?: string): Promise<{ stored: number; dropped: number }> {
   const settings = await getSettings();
-  const existingById = new Map((await postsRepo.list()).map((p) => [p.id, p]));
-  const toStore: ExtractedPost[] = [];
-  let dropped = 0;
+  const book = searchBook(await searchesRepo.list());
+  if (pageUrl) book.see(pageUrl, new Date().toISOString());
 
-  for (const incoming of posts) {
-    const merged = applyKeywords(mergePost(existingById.get(incoming.id), incoming), settings.keywords.include, settings.keywords.exclude);
-    if (settings.captureOnlyMatching && merged.matchedKeywords.length === 0 && !existingById.has(incoming.id)) {
+  // Posts stored before searchIds existed hold the page URL itself. The first
+  // capture after the update moves every such URL into `searches`, once.
+  const toStore = new Map<string, ExtractedPost>();
+  const existingById = new Map<string, ExtractedPost>();
+  for (const stored of await postsRepo.list()) {
+    if (hasLegacyUrls(stored)) {
+      const lifted = liftLegacyUrls(stored, book);
+      toStore.set(lifted.id, lifted);
+      existingById.set(lifted.id, lifted);
+    } else {
+      existingById.set(stored.id, stored);
+    }
+  }
+
+  let kept = 0;
+  let dropped = 0;
+  for (const raw of posts) {
+    // A content script from an older build still sends sourceUrl.
+    const incoming = hasLegacyUrls(raw) ? liftLegacyUrls(raw, book) : raw;
+    const existing = toStore.get(incoming.id) ?? existingById.get(incoming.id);
+    const merged = applyKeywords(mergePost(existing, incoming), settings.keywords.include, settings.keywords.exclude);
+    if (settings.captureOnlyMatching && merged.matchedKeywords.length === 0 && !existing) {
       dropped++;
       continue;
     }
-    toStore.push(merged);
+    toStore.set(merged.id, merged);
+    kept++;
   }
 
-  await postsRepo.putMany(toStore);
-  return { stored: toStore.length, dropped };
+  // Pages first, so a stored post never points at a page that is not stored yet.
+  const pages = book.changed();
+  if (pages.length > 0) await searchesRepo.putMany(pages);
+  await postsRepo.putMany([...toStore.values()]);
+  return { stored: kept, dropped };
 }
 
 /** Re-run keyword matching over everything stored, e.g. after settings change. */

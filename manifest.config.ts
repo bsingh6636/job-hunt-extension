@@ -18,6 +18,9 @@ export const ATS_HOSTS = [
 
 export const LINKEDIN_HOSTS = ['https://www.linkedin.com/*'];
 
+/** WhatsApp Web, for job posts in group chats. Read-only: the script never types or sends. */
+export const WHATSAPP_HOSTS = ['https://web.whatsapp.com/*'];
+
 /** The local storage server (server/index.mjs). */
 export const SERVER_HOSTS = ['http://127.0.0.1/*', 'http://localhost/*'];
 
@@ -30,9 +33,10 @@ export default defineManifest({
   side_panel: { default_path: 'src/sidepanel/index.html' },
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   permissions: ['storage', 'unlimitedStorage', 'sidePanel', 'tabs', 'activeTab', 'scripting', 'clipboardWrite'],
-  host_permissions: [...LINKEDIN_HOSTS, ...ATS_HOSTS, ...SERVER_HOSTS],
+  host_permissions: [...LINKEDIN_HOSTS, ...WHATSAPP_HOSTS, ...ATS_HOSTS, ...SERVER_HOSTS],
   content_scripts: [
     { matches: LINKEDIN_HOSTS, js: ['src/content/linkedin/index.ts'], run_at: 'document_idle' },
+    { matches: WHATSAPP_HOSTS, js: ['src/content/whatsapp/index.ts'], run_at: 'document_idle' },
     { matches: ATS_HOSTS, js: ['src/content/autofill/index.ts'], run_at: 'document_idle' },
   ],
 });

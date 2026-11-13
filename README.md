@@ -1,6 +1,6 @@
 # Job Hunt Assistant (Chrome extension, Manifest V3)
 
-A modular Chrome extension that streamlines job hunting. Phase 1 (this repo, extension only) ships two features in one side panel. Later phases add a backend and AI.
+A modular Chrome extension that streamlines job hunting. Phase 1 (this repo, extension only) ships three features in one side panel: LinkedIn posts, WhatsApp group posts, ATS autofill. Later phases add a backend and AI.
 
 > **For AI agents and contributors:** read [Rules for making changes](#rules-for-making-changes) before editing anything. This README is the single source of truth for the project; every change that alters behaviour, structure, or setup must update it in the same change.
 
@@ -20,14 +20,15 @@ A modular Chrome extension that streamlines job hunting. Phase 1 (this repo, ext
 10. [Folder structure](#folder-structure)
 11. [Message bus](#message-bus)
 12. [LinkedIn extraction internals](#linkedin-extraction-internals)
-13. [Autofill internals](#autofill-internals)
-14. [Testing](#testing)
-15. [Roadmap](#roadmap)
-16. [AI extension points](#ai-extension-points)
-17. [Known limits and caveats](#known-limits-and-caveats)
-18. [Troubleshooting](#troubleshooting)
-19. [Rules for making changes](#rules-for-making-changes)
-20. [Change log](#change-log)
+13. [WhatsApp extraction internals](#whatsapp-extraction-internals)
+14. [Autofill internals](#autofill-internals)
+15. [Testing](#testing)
+16. [Roadmap](#roadmap)
+17. [AI extension points](#ai-extension-points)
+18. [Known limits and caveats](#known-limits-and-caveats)
+19. [Troubleshooting](#troubleshooting)
+20. [Rules for making changes](#rules-for-making-changes)
+21. [Change log](#change-log)
 
 ---
 
@@ -49,14 +50,27 @@ Run a LinkedIn search such as `"hiring" AND "2+ years" AND "node.js" NOT "open t
 
 On the **Posts** tab you can then:
 
-- filter by keyword chip, contact (any / has email or link / has email / has link / no email, no link), status (new / reviewed / contacted / ignored), hide excluded, free-text search
+- filter by keyword chip, contact (any / has email or link / has email / has link / no email, no link), status (new / reviewed / contacted / ignored), **search** (every LinkedIn search you extracted from, with its post count and an **open search** link to run it again), hide excluded, free-text search
 - click an email to copy it, or press **Email** to open a mailto draft
 - **Copy all details** of a post (author, profile, post URL, date, emails, links, keywords, status, notes, full text) for pasting into an email or notes
 - set a status and write notes per post (who you contacted, what they said)
 - export the filtered set as **CSV**, **JSON**, or plain **text**, to clipboard or as a download
 - delete the shown posts or clear everything
 
-### B. ATS application autofill
+### B. WhatsApp group job posts
+
+Open WhatsApp Web, click a job group, and press **Extract** on the **WhatsApp** tab. Recruiter groups are mostly noise and most posts do not fit, so the extension reads a lot and keeps little:
+
+- reads the open chat from the newest message backwards, scrolling up for older messages at a reading pace (random 1.5-4 s pause), until it has the number of **job posts** you asked for (default 100), reaches messages older than N days (default 30), or WhatsApp has no older messages
+- keeps only messages that look like job posts (hiring words, experience, location, CTC, an email or a phone number); chit-chat, "X added Y" notices, your own messages and images without a caption are read but not stored
+- clicks "Read more" so long posts are captured in full, with emoji and line breaks
+- captures per post: text, emails, **phone numbers** (normalised to +91..., with a wa.me chat link), links, **experience asked** ("2 yrs", "6-7 yrs", "8+ yrs"), group, sender (name and number where WhatsApp shows it) and message time
+- stores the same text forwarded into several groups **once**, listing every group, sender and time it was seen in
+- stores into its own `whatsappPosts` collection (SQL view `whatsapp_posts`), never mixed with LinkedIn posts
+
+The WhatsApp tab filters by contact (email or phone / email / phone / link / none), group, **my years** (hides posts whose minimum experience is above yours; posts that state none stay), keyword chip, status and text, and exports CSV/JSON/text like the Posts tab. It only reads and scrolls; it never types or sends anything.
+
+### C. ATS application autofill
 
 On a Greenhouse, Lever, or Workday application page, the **Autofill** tab detects the platform, reports how many known fields are visible on the current step, and **Fill this page** fills them from the stored candidate profile. Each run produces a report:
 
@@ -73,10 +87,11 @@ Running autofill also records the application in the **Log** tab (company derive
 
 | Area | State as of 2026-11-13 |
 | --- | --- |
-| Build, type check, unit tests | Passing (`npm run build`, `npm test`, 46 tests incl. server round trip) |
+| Build, type check, unit tests | Passing (`npm run build`, `npm test`, 77 tests incl. server round trip) |
 | Local SQLite server | Built and tested (unit + smoke). `npm run server` |
 | Loaded in Chrome | Loaded by Ayush; first extraction attempt captured nothing (cause not yet known, Diagnose page added to find out) |
-| LinkedIn extraction on a live page | **Working on content search, with gaps.** First live run of the structural fallback (2026-11-13) stored 37 posts: author, profile, text, emails and approximate time correct on 34. Fixed after that run: video posts stored the video player's control text as the post body, `/safety/go` links were not unwrapped. Still open: no post link in the page for most posts (see Known limits). Not yet tried live: Extract N / More, random scroll pause, inner-container scrolling, text-based "Show more results". Not yet tried on the feed. No page sample saved yet |
+| LinkedIn extraction on a live page | **Working on content search, with gaps.** First live run of the structural fallback (2026-11-13) stored 37 posts: author, profile, text, emails and approximate time correct on 34. Fixed after that run: video posts stored the video player's control text as the post body, `/safety/go` links were not unwrapped. Still open: no post link in the page for most posts (see Known limits). **Extract N / More worked live** on 2026-11-13 (about 03:30-04:50 IST): the store grew from 37 to 239 posts across two searches, with `lastSeenAt` and `sourceUrls` filled. Not checked from that run: the random pause and "Show more results" handling. Not yet tried on the feed. No page sample saved yet |
+| WhatsApp group extraction | **Built 2026-11-13, not yet tried on a live page.** Written from WhatsApp Web's known markup (`data-id`, `data-pre-plain-text`, `span.selectable-text`); 20 unit tests on synthetic markup. First live run: `docs/LIVE_TEST.md` 2c, with Diagnose chat |
 | Greenhouse / Lever / Workday adapters | **Not yet verified** against real postings; written from each platform's known field ids |
 | Backend / sync | Not started (Phase 2) |
 | AI features | Hooks only, no model wired (Phase 3) |
@@ -105,7 +120,7 @@ The dev server uses port 5174 (`vite.config.ts`); change it there if the port is
 1. Run `npm run build` (or `npm run dev`).
 2. Open `chrome://extensions`, turn on **Developer mode**.
 3. **Load unpacked** and pick the `dist/` folder.
-4. Click the toolbar icon on any tab. The side panel opens. It switches to the Posts tab automatically on LinkedIn and to Autofill on a supported ATS host.
+4. Click the toolbar icon on any tab. The side panel opens. It switches to the Posts tab automatically on LinkedIn, to WhatsApp on web.whatsapp.com, and to Autofill on a supported ATS host.
 
 After a production build or any change to `manifest.config.ts`, press the reload icon on the extension card. In dev mode, content scripts and the panel reload on save, but a tab that was open before the extension loaded still needs a page reload (the panel tells you when that is the case).
 
@@ -149,7 +164,16 @@ The profile for Brijesh was transcribed by hand from `Downloads/resume/04_Source
 2. Side panel > **Posts**. Type the number of posts to capture (default 200, remembered) and press **Extract**: it starts from the top of the results, scrolls with a random pause between scrolls, and stores every batch as it goes. Progress shows "Captured N of M. Next scroll in 4.2 s". **Stop** at any time; everything captured so far is already stored.
 3. Press **More (+20)** to capture the next 20 posts not yet captured on this page. It continues from where the last Extract or More stopped (the page remembers what it sent until its URL changes or the tab reloads), so pressing More repeatedly walks down the results. Pressing **Extract** again starts from the top.
 4. A run ends when it has its count, nothing new loads after three scrolls, or you stop it. The final status line says which.
-5. Review on the Posts tab. Posts matching an exclude keyword are hidden by default (untick "hide excluded" to see them). Links are shown open on each card; the contact filter finds posts with a link but no email.
+5. Review on the Posts tab. Posts matching an exclude keyword are hidden by default (untick "hide excluded" to see them). Links are shown open on each card; the contact filter finds posts with a link but no email. The search menu (shown once a search is stored) narrows the list to posts one search found; **open search** opens that search on LinkedIn again.
+
+### WhatsApp
+
+1. Open `https://web.whatsapp.com/`, log in, and **reload the tab** once after installing or reloading the extension.
+2. Click a job group. Side panel > **WhatsApp** shows "Chat: <group> · N messages loaded".
+3. Set **job posts** (how many to keep, default 100) and **back N days** (default 30, 0 = no limit), press **Extract**. The chat scrolls up by itself; progress shows "Captured 12 of 100 job posts, 340 messages read, back to 02/11/2026". **Stop** at any time; everything captured so far is stored.
+4. **More (+50)** continues further back in the same chat. Opening another group and pressing Extract or More starts that group from its newest message.
+5. Repeat for each group. A post forwarded into several groups shows once, with "also in N other groups".
+6. Review on the WhatsApp tab. Type your years of experience in **my years** to hide posts that ask for more. Click a phone's **chat** link to open a WhatsApp chat with the recruiter, or **Email** for a mailto draft.
 
 ### Autofill
 
@@ -171,13 +195,20 @@ Applications appear here after autofill, or add one by URL. Status values: draft
 | --- | --- | --- |
 | Include keywords | hiring, node.js, nodejs, react, full stack, backend, mern, immediate joiner, bengaluru, bangalore | Case-insensitive phrase match against post text + author headline. Hits are shown as chips and usable as filters |
 | Exclude keywords | open to work, looking for a job | Matching posts are stored but hidden by default |
-| Store only posts that hit an include keyword | off | When on, the background drops non-matching new posts instead of storing them |
+| Store only posts that hit an include keyword | off | When on, the background drops non-matching new LinkedIn and WhatsApp posts instead of storing them |
 | Posts to capture per Extract | 200 | Also the number box on the Posts tab, which saves back here |
 | Posts to capture per More press | 20 | Next N posts not yet captured on the page |
 | Pause between scrolls, at least / at most (s) | 3 / 7 | A random time in this range before each scroll, so the pace looks like reading. Raise it for long runs |
 | Wait for new posts after each scroll, at most (ms) | 1500 | How long to wait for LinkedIn to render more posts after a scroll |
 | Scroll to load more | on | Off = capture only what is already on screen |
 | Click "...more" | on | Expand truncated posts before capture |
+| WhatsApp: job posts per Extract | 100 | Also the number box on the WhatsApp tab. Counts job posts kept, not messages read |
+| WhatsApp: job posts per More press | 50 | Next N job posts further back in the open chat |
+| WhatsApp: stop at messages older than (days) | 30 | Also the "back N days" box on the WhatsApp tab. 0 = read back as far as WhatsApp Web has |
+| WhatsApp: pause between scrolls, at least / at most (s) | 1.5 / 4 | Random pause before each scroll up |
+| WhatsApp: wait for older messages (ms) | 3000 | How long to wait for WhatsApp to load older messages after a scroll up |
+| WhatsApp: store only job-like messages | on | Off = store every text message (greetings too) |
+| WhatsApp: scroll up / click "Read more" | on / on | Off = only what is loaded / truncated text |
 | Only fill empty fields | on | Autofill never overwrites a value |
 | Highlight filled fields | on | Green outline for 4 seconds |
 
@@ -201,20 +232,26 @@ Profile and settings always stay in `chrome.storage.local` (the settings decide 
 ```sql
 SELECT author, posted_at, emails, status, substr(text, 1, 80) FROM posts ORDER BY posted_at DESC;
 SELECT author, profile_url, post_url, url_kind, posted_at, posted_at_approx, captured_at, last_seen_at, source_urls FROM posts;
+SELECT keywords, posts, first_seen_at, last_seen_at, url FROM searches ORDER BY last_seen_at DESC;
 SELECT company, status, url FROM applications;
+SELECT chat, sender, sender_phone, posted_at, exp_min, exp_max, emails, phones, times_seen, chats, substr(text, 1, 80) FROM whatsapp_posts ORDER BY posted_at DESC;
 ```
 
-Schema: one `documents(collection, id, data JSON, created_at, updated_at)` table plus the `posts` and `applications` views (`server/store.mjs`). The `posts` view is dropped and recreated on every server start, so new columns appear after a restart. Routes are listed in `server/app.mjs`: `GET/PUT/DELETE /api/:collection/:id`, `GET/DELETE /api/:collection`, `POST /api/:collection/bulk`, `POST /api/:collection/bulk-delete`, `GET /health`. Collections: `posts`, `applications`, `fillReports`. The server binds to 127.0.0.1 only.
+Schema: one `documents(collection, id, data JSON, created_at, updated_at)` table plus the `posts`, `searches`, `whatsapp_posts` and `applications` views (`server/store.mjs`). The `posts`, `searches` and `whatsapp_posts` views are dropped and recreated on every server start, so new columns appear after a restart (restart the server once to get `whatsapp_posts`). Routes are listed in `server/app.mjs`: `GET/PUT/DELETE /api/:collection/:id`, `GET/DELETE /api/:collection`, `POST /api/:collection/bulk`, `POST /api/:collection/bulk-delete`, `GET /health`. Collections: `posts` (LinkedIn), `searches` (LinkedIn search/feed URLs, one row each), `whatsappPosts` (WhatsApp groups, kept apart from LinkedIn), `applications`, `fillReports`. The server binds to 127.0.0.1 only.
 
 **Page samples** are files, not database rows: `server/data/samples/<id>.html` (full page, scripts disabled) and `<id>.json` (url, time, note, id scan, inventories). Override the folder with `JOBHUNT_SAMPLES`. Routes: `GET /samples` (browser index), `GET /samples.json`, `POST /samples` (body `{ meta, html }`), `GET /samples/:id.html` (served with a Content-Security-Policy that blocks all scripts), `GET /samples/:id.json`, `DELETE /samples/:id` (`server/samples.mjs`).
 
-**Browser mode** keys: `collection:posts`, `collection:applications`, `collection:fillReports` (each a `Record<id, item>`), `value:profile`, `value:settings`.
+**Browser mode** keys: `collection:posts`, `collection:searches`, `collection:whatsappPosts`, `collection:applications`, `collection:fillReports` (each a `Record<id, item>`), `value:profile`, `value:settings`.
 
-Types are in `src/shared/types.ts`. `ExtractedPost` fields: id (`activity:<n>`, `ugcPost:<n>`, or `text:<hash>` when the page shows no post id), url, urlKind (`post`, `author-activity`, `search`), postedAtApprox, author {name, headline, profileUrl}, text, emails[], links[], postedAt (ISO), postedAtLabel ("3d"), capturedAt (first time an extraction saw it), lastSeenAt (latest time), sourceUrl (first search page that showed it), sourceUrls[] (every search page that showed it), matchedKeywords[], excludedBy[], status, notes. Posts stored before 2026-11-13 have no lastSeenAt/sourceUrls until seen again; exports and the `posts` view fall back to capturedAt/[sourceUrl].
+Types are in `src/shared/types.ts`. `ExtractedPost` fields: id (`activity:<n>`, `ugcPost:<n>`, or `text:<hash>` when the page shows no post id), url, urlKind (`post`, `author-activity`, `search`), postedAtApprox, author {name, headline, profileUrl}, text, emails[], links[], postedAt (ISO), postedAtLabel ("3d"), capturedAt (first time an extraction saw it), lastSeenAt (latest time), searchIds[] (every search or feed page that showed it, oldest first, as ids in `searches`; [0] is where it was first captured), matchedKeywords[], excludedBy[], status, notes. Posts stored before 2026-11-13 have no lastSeenAt until seen again (exports and the `posts` view fall back to capturedAt).
 
-**Re-running extraction** on the same or a different search never duplicates a post that keeps its id: it updates text (longest wins), links, lastSeenAt and sourceUrls, and keeps status, notes, capturedAt and sourceUrl. CSV/JSON exports and `GET /api/posts` contain every field above, which is what another tool or AI needs to review posts.
+**Searches.** A search URL is long and the same for every post the search finds (on 2026-11-13, 239 posts repeated 2 URLs 479 times, a fifth of the database), so each search or feed page is stored once in the `searches` collection as a `SearchPage`: id (`search:<hash>` of the URL), url (with per-visit params such as `sid` and `origin` removed and the rest sorted, so the same search always gets the same id; opening it runs the search again), keywords (the decoded query, missing on the feed), firstSeenAt, lastSeenAt. The content script sends the page URL with each batch (`POSTS_CAPTURED.pageUrl`) and posts carry only `searchIds`. Posts stored earlier hold `sourceUrl`/`sourceUrls` strings instead; the first capture after this change moves every such URL into `searches` and drops the strings (all stored posts in one go). Until then, exports, the search filter and the `posts` view read the old fields. Code: `src/shared/searches.ts`.
 
-The storage API is the `Repository<T>` interface (`get/list/put/putMany/remove/removeMany/clear/subscribe`) and `ValueStore<T>`. `LocalRepository` implements it over chrome.storage, `ApiRepository` over the server routes, and `SwitchingRepository` (in `src/shared/storage/index.ts`) routes each call to one of them based on the current settings. Call sites only ever see `postsRepo`, `applicationsRepo`, `fillReportsRepo`. Phase 2 points `ApiRepository` at a remote backend with the same routes plus auth.
+`WhatsAppPost` fields: id (`wa:<hash>` of the first 300 letters/digits of the text, so the same text in several groups is one row), text, emails[], phones[] (`+917087706624` form), links[], experience {min, max?} (missing when the post states none; several roles give the lowest min), chat, sender {name, phone?} and postedAt (all three from the earliest sighting), sightings[] ({messageId (WhatsApp's data-id), chat, chatId, sender, senderPhone?, postedAt?, forwarded?}, earliest first, at most 50), capturedAt, lastSeenAt, matchedKeywords[], excludedBy[], status, notes. Keyword tags use the same include/exclude lists as LinkedIn, matched against the text.
+
+**Re-running extraction** on the same or a different search never duplicates a post that keeps its id: it updates text (longest wins), links, lastSeenAt and searchIds, and keeps status, notes, capturedAt and searchIds[0]. CSV/JSON exports contain every field above with the search URLs written out again (`sourceUrl`, `sourceUrls` resolved from `searchIds`), which is what another tool or AI needs to review posts. `GET /api/posts` returns posts with `searchIds`; `GET /api/searches` returns the URLs, and the `posts` SQL view joins them (`source_url`, `source_urls`, `search_ids`).
+
+The storage API is the `Repository<T>` interface (`get/list/put/putMany/remove/removeMany/clear/subscribe`) and `ValueStore<T>`. `LocalRepository` implements it over chrome.storage, `ApiRepository` over the server routes, and `SwitchingRepository` (in `src/shared/storage/index.ts`) routes each call to one of them based on the current settings. Call sites only ever see `postsRepo`, `searchesRepo`, `whatsappRepo`, `applicationsRepo`, `fillReportsRepo`. Phase 2 points `ApiRepository` at a remote backend with the same routes plus auth.
 
 ---
 
@@ -225,8 +262,9 @@ Three contexts, strict separation:
 | Context | Runs in | Touches storage | Talks to |
 | --- | --- | --- | --- |
 | LinkedIn content script | linkedin.com tab | no | background (`POSTS_CAPTURED`), side panel (`LINKEDIN_EXTRACT_PROGRESS`) |
+| WhatsApp content script | web.whatsapp.com tab | no | background (`WHATSAPP_CAPTURED`), side panel (`WHATSAPP_EXTRACT_PROGRESS`); reads and scrolls only |
 | Autofill content script | ATS tab | no | answers the side panel (`AUTOFILL_DETECT`, `AUTOFILL_RUN`) |
-| Background service worker | extension | yes | merges captured posts into storage |
+| Background service worker | extension | yes | merges captured LinkedIn and WhatsApp posts into storage |
 | Side panel (React) | extension page | yes | sends commands to content scripts via `chrome.tabs.sendMessage` |
 | Local storage server | Node process on the laptop | owns the SQLite file | answers HTTP from background and panel (server mode) |
 
@@ -235,7 +273,7 @@ Design rules:
 - Content scripts never touch storage, so the backend can change without touching page code.
 - The background owns every write that can happen while the panel is closed.
 - The panel subscribes to storage changes, so the list updates live while extraction streams in.
-- Every third-party selector lives in exactly one file per site.
+- Every third-party selector lives in exactly one file per site (`src/content/linkedin/selectors.ts`, `src/content/whatsapp/selectors.ts`).
 - Adapters are data; setters mutate; the engine orchestrates. No layer reaches across.
 
 Stack: Vite 7, `@crxjs/vite-plugin` 2 (bundles MV3 entries, HMR), TypeScript strict, React 19 (side panel only), Zod 4 (profile validation), Vitest + jsdom.
@@ -259,16 +297,18 @@ job-hunt-extension/
 ├── server/                       local storage server (no dependencies)
 │   ├── index.mjs                 entry: npm run server, port 4777
 │   ├── app.mjs                   HTTP routes + CORS
-│   ├── store.mjs                 SQLite documents table + posts/applications views
+│   ├── store.mjs                 SQLite documents table + posts/searches/whatsapp_posts/applications views
 │   ├── samples.mjs               page sample files + browser index
 │   └── data/                     git-ignored: jobhunt.sqlite, samples/
 ├── src/
 │   ├── shared/
-│   │   ├── types.ts              ExtractedPost, Application, FillReport, Settings, DEFAULT_SETTINGS
+│   │   ├── types.ts              ExtractedPost, WhatsAppPost, Application, FillReport, Settings, DEFAULT_SETTINGS
 │   │   ├── messages.ts           MessageMap, sendToTab, sendToRuntime, onMessage
-│   │   ├── posts.ts              mergePost, applyKeywords, mergeCapturedPosts, rematchAllPosts
+│   │   ├── posts.ts              mergePost, applyKeywords, mergeCapturedPosts, rematchAllPosts (LinkedIn)
+│   │   ├── searches.ts           LinkedIn search URLs: normalizeSearchUrl, searchIdOf, searchBook, legacy sourceUrl migration (pure)
+│   │   ├── whatsapp.ts           mergeWhatsAppPost (sightings), mergeCapturedWhatsApp, rematchAllWhatsApp
 │   │   ├── storage/              Repository.ts, LocalRepository.ts, ApiRepository.ts (HTTP), index.ts (SwitchingRepository)
-│   │   └── utils/                email.ts, csv.ts, dom.ts, keywords.ts, log.ts
+│   │   └── utils/                email.ts, phone.ts, jobtext.ts (isJobPost, parseExperience), hash.ts, csv.ts, dom.ts (incl. pickPause), keywords.ts, log.ts
 │   ├── background/index.ts       service worker: router, side panel behaviour
 │   ├── content/
 │   │   ├── linkedin/
@@ -280,6 +320,13 @@ job-hunt-extension/
 │   │   │   ├── sample.ts         full page sample (HTML + id scan) sent to the server
 │   │   │   ├── extract.ts        extraction loop: Extract / More, page session, random pause (unit-tested)
 │   │   │   └── index.ts          entry: messages, wires extract.ts to chrome messaging
+│   │   ├── whatsapp/
+│   │   │   ├── selectors.ts      EVERY WhatsApp Web hook (data-id, data-pre-plain-text, body spans, Read more)
+│   │   │   ├── parse.ts          pure DOM -> WhatsAppPost: data-id, stamp, body text with emoji, contacts, content id
+│   │   │   ├── page.ts           the only page actions: click "Read more", scroll the message list up
+│   │   │   ├── extract.ts        extraction loop: Extract / More, chat session, age limit (unit-tested)
+│   │   │   ├── diagnose.ts       chat structure report, no text/names/numbers
+│   │   │   └── index.ts          entry: messages, wires extract.ts to chrome messaging
 │   │   └── autofill/
 │   │       ├── adapters/         Adapter.ts (interface + locators), greenhouse.ts, lever.ts, workday.ts, index.ts (registry)
 │   │       ├── setters.ts        text / select / checkbox / radio / combobox
@@ -289,14 +336,17 @@ job-hunt-extension/
 │   └── sidepanel/
 │       ├── index.html, main.tsx, App.tsx, styles.css
 │       ├── lib/                  hooks.ts, export.ts (CSV/JSON/text/clipboard), tabs.ts, server.ts (status), samples.ts (upload)
-│       ├── components/PostCard.tsx
-│       └── pages/                PostsPage, AutofillPage, ProfilePage, LogPage, SettingsPage
+│       ├── components/           PostCard.tsx (LinkedIn), WhatsAppCard.tsx
+│       └── pages/                PostsPage, WhatsAppPage, AutofillPage, ProfilePage, LogPage, SettingsPage
 ├── tests/
 │   ├── fixtures/linkedin-post.ts synthetic LinkedIn markup built from selectors.ts
+│   ├── fixtures/whatsapp-chat.ts synthetic WhatsApp Web chat built from whatsapp/selectors.ts (fake names and numbers)
+│   ├── whatsapp.test.ts          stamps, data-ids, parsing, Read more, job/experience/phone heuristics, merge, loop, diagnose privacy
 │   ├── linkedin.parse.test.ts
 │   ├── linkedin.structure.test.ts class-less markup fixture: cards, author, text, ids, expand, diagnose privacy
 │   ├── linkedin.sample.test.ts   full page capture, scripts disabled, id scan
 │   ├── autofill.engine.test.ts
+│   ├── searches.test.ts          search URL ids, searches table, legacy migration, mergeCapturedPosts
 │   ├── server.test.ts            starts the real server on a random port
 │   └── utils.test.ts
 └── docs/
@@ -324,7 +374,13 @@ Path aliases: `@shared/*` -> `src/shared/*`, `@profile/*` -> `profile/*` (set in
 | `LINKEDIN_SAMPLE` | panel -> LinkedIn content | full page HTML (scripts disabled) plus every post-id location; the panel POSTs it to the server's `/samples`, or downloads it if the server is down |
 | `DATA_CHANGED` | any writer -> everyone | a collection changed; panel refetches (needed in server mode, which cannot push) |
 | `LINKEDIN_EXTRACT_PROGRESS` | content -> panel | progress broadcast |
-| `POSTS_CAPTURED` | content -> background | batch of parsed posts; returns stored/dropped counts |
+| `POSTS_CAPTURED` | content -> background | batch of parsed posts plus `pageUrl` (the search/feed page, stored once in `searches`); returns stored/dropped counts |
+| `WHATSAPP_EXTRACT_START` | panel -> WhatsApp content | start with `WhatsAppExtractOptions` (`settings.whatsapp`) and `mode` (`fresh` = Extract, `more` = More) |
+| `WHATSAPP_EXTRACT_STOP` | panel -> WhatsApp content | stop after the current round |
+| `WHATSAPP_STATUS` | panel -> WhatsApp content | running flag, open chat name, messages loaded (polled every 4 s; WhatsApp Web has one URL for all chats) |
+| `WHATSAPP_DIAGNOSE` | panel -> WhatsApp content | counts, masked data-id/stamp shapes, scroller, one message's tag outline; no text, names or numbers |
+| `WHATSAPP_EXTRACT_PROGRESS` | WhatsApp content -> panel | progress broadcast |
+| `WHATSAPP_CAPTURED` | WhatsApp content -> background | batch of job posts; merged into `whatsappPosts`, returns stored/dropped counts |
 | `AUTOFILL_DETECT` | panel -> autofill content | adapter name + visible known fields |
 | `AUTOFILL_RUN` | panel -> autofill content | profile + options; returns `FillReport` |
 
@@ -336,7 +392,7 @@ To add a message: add a key to `MessageMap`, a handler in the receiving context,
 
 1. The panel reads `settings.extract` (with the Posts-tab number as `maxPosts`) and sends `LINKEDIN_EXTRACT_START` with `mode` `fresh` (Extract) or `more` (More).
 2. The content script runs `runExtraction()` (`extract.ts`). A page session (`id -> text length sent`) lives in the content script until the URL changes or the tab reloads. `fresh` clears it and counts up to `maxPosts`; `more` keeps it and counts only posts not in it, up to `moreBatch`. Re-sent posts (text grew) never count. Each round: `expandAll()` clicks every "...more" button (by class, by aria-label, or by button text as a fallback), `findPostCards()` returns top-level cards (nested reshares excluded), `parsePostCard()` builds an `ExtractedPost`.
-3. A post is re-sent when its text grew since the last send (it was expanded). The background `mergePost` keeps the longest text, unions emails, takes the links from the parse with the longest text (so re-extracting after a parser fix replaces wrong links; a shorter parse only adds links), keeps the first captured status and notes, and re-applies keyword tags. Re-extracting never removes a stored post: a post whose id changes (its text changed) is stored as a new row next to the old one.
+3. A post is re-sent when its text grew since the last send (it was expanded). The background `mergePost` keeps the longest text, unions emails, takes the links from the parse with the longest text (so re-extracting after a parser fix replaces wrong links; a shorter parse only adds links), keeps the first captured status and notes, unions `searchIds`, and re-applies keyword tags. Before the posts, the background writes the batch's `pageUrl` to `searches` (new page, or a later lastSeenAt). Re-extracting never removes a stored post: a post whose id changes (its text changed) is stored as a new row next to the old one.
 4. `scrollForMore()` scrolls the window to the bottom and scrolls the last post into view (which also scrolls an inner results container, if LinkedIn uses one), clicks any "Show more results" button (known selectors, else a button in `<main>` whose text or aria-label matches `SEL.loadMoreTextPattern`, e.g. "Show more results", "Load more posts"), and waits up to `scrollDelayMs` for growth. Growth = page height, `<main>` height or `<main>` link count went up. Before each scroll the loop pauses a random `pauseMinMs`..`pauseMaxMs` (default 3-7 s), checking Stop every 250 ms.
 5. Stops on: post limit, three idle rounds with no growth, stop request, or error. Every stop reports a message to the panel.
 
@@ -356,6 +412,37 @@ Post id and URL come from the `data-urn` / `data-id` / `componentkey` / `data-en
 **Diagnose page** (Posts tab) sends `LINKEDIN_DIAGNOSE` and copies a JSON report to the clipboard: which strategy found cards (`class`, `urn-attribute`, `structure`, `none`), hit counts for every selector, generic probes, which attributes carry post ids, `componentkey`/`data-testid`/role inventories, button labels, non-button "more" toggles, and an outline of the first two cards. Names, headlines and text appear only masked (lowercase letters become `x`), profile slugs as `/in/*`, so the report is safe to paste into a chat. Paste it to whoever is fixing `selectors.ts`. Full procedure in `docs/LIVE_TEST.md`.
 
 **Save page sample** (Posts tab > Page sample) goes further: it captures the **full page HTML** and sends it to the local server, which saves `server/data/samples/<id>.html` and `<id>.json`. In the saved copy, executable scripts are turned into inert text (content kept for analysis), external script sources and iframes are removed, CSRF meta tags are dropped, and a `<base>` points at linkedin.com so the page renders. The `.json` holds every attribute, link and inline script containing a post id, `componentkey`/`data-testid`/role inventories, button labels and a notes field for ground truth such as real post links. Browse samples at `http://127.0.0.1:4777/samples`; pages are served with scripts blocked. If the server is down the panel downloads one JSON file to Downloads instead. Samples contain other people's post text and your own LinkedIn page chrome, so they stay on the laptop (git-ignored).
+
+---
+
+## WhatsApp extraction internals
+
+WhatsApp Web hashes its class names and dropped most `data-testid`s in 2023, so `src/content/whatsapp/selectors.ts` (`W`) uses the hooks WhatsApp's own copy/paste keeps stable:
+
+| Hook | Used for |
+| --- | --- |
+| `#main`, `#main header` | the open chat and its name (first header text that is not the member list, "online" or "typing") |
+| `data-id="false_<chat>@g.us_<msgId>_<sender>@c.us"` | one element per message (outermost carrier); `true_` = sent by you, skipped; chat id keys the session; `<sender>@c.us` gives the sender's number, `@lid` hides it |
+| `data-pre-plain-text="[2:48 pm, 13/11/2026] Sender: "` | message time and sender. Day/month order: a first part above 12 means day first, a second part above 12 month first, else the browser locale (US = month first) |
+| `span.selectable-text` (fallbacks in `W.body`) | the body; the longest one not inside a quoted reply |
+| `<img alt="🔥">` | emoji, read as their alt text |
+| text "Read more" on `[role=button]` / `.read-more-button` | clicked once, innermost element first |
+| `[data-icon*="forward"]` | the sighting's `forwarded` flag |
+
+The loop (`extract.ts`, `runWhatsAppExtraction`):
+
+1. `expandReadMore()` clicks every new "Read more" and returns the expanded messages' data-ids, so they are re-read. Clicked toggles are kept in a WeakSet; nothing is written to WhatsApp's DOM.
+2. `findMessageElements()` lists messages oldest first; the loop reads them **newest first**. Each message is parsed once per run. `parseMessage()` returns null for your own messages, system notices (no body) and media without a caption.
+3. A message older than `maxAgeDays` is skipped and ends the run after this round. `isJobPost()` (40+ characters and three of: hiring/recruit, job/opening/vacancy/position, role, experience/years, CTC/LPA/salary, apply/CV/resume/JD, walk-in/interview/notice period, location/remote/WFH/WFO/hybrid, full-time/contract/internship/fresher, developer/engineer/architect/..., skills/requirements/responsibilities, an email, a phone) decides what is kept. Only kept posts count towards the run's number.
+4. The chat session (`data-id -> text length sent`) lives in the content script. `fresh` clears it; `more` keeps it; opening another chat resets it. A post already sent is re-sent only if "Read more" made it longer.
+5. Each batch goes to the background (`WHATSAPP_CAPTURED`), which merges by content id: same text = same row, one more sighting.
+6. `loadOlder()` clicks any "older messages" button in the chat, nudges the message list (first scrollable ancestor of a message, else `W.scrollerFallbacks`) down then to the top, and waits up to `scrollDelayMs` for the oldest loaded message to change. Three scrolls with no change end the run.
+
+**Experience** (`parseExperience` in `src/shared/utils/jobtext.ts`): the number(s) right after "Experience"/"Exp"/"YOE" ("Experience: 8+", "Exp - 2-4"), plus "N years", "N+ yrs", "N to M years" anywhere. Months ("12 months"), versions ("Node.js 18") and CTC figures are ignored. Several roles give the lowest minimum, so the **my years** filter errs towards showing a post. "Fresher" alone = 0.
+
+**Phones** (`extractPhones` in `src/shared/utils/phone.ts`): runs of digits with spaces/dashes/brackets, not inside links or emails; +CC numbers of 10-15 digits, Indian 10-digit mobiles (6-9 first), 0-prefixed 11-digit numbers, 91-prefixed 12-digit numbers. Dates, salaries and ids do not match.
+
+**Diagnose chat** (WhatsApp tab) copies a JSON report: counts per hook, masked data-id and stamp shapes (`false_9@g.us_X_9@c.us`, `[9:99 pm, 99/99/9999] <sender>: `), which scroller was found, how many messages parsed / had a date / looked like job posts, and a tag/attribute outline of the newest incoming message. No message text, names or numbers. Paste it to whoever fixes `selectors.ts`; procedure in `docs/LIVE_TEST.md` 2c.
 
 ---
 
@@ -388,11 +475,13 @@ npm test
 - `tests/linkedin.parse.test.ts`: card discovery, nested reshare exclusion, author/text/email/link/timestamp parsing, URN reading.
 - `tests/linkedin.structure.test.ts`: class-less markup: three posts found among comments and a people suggestion, person and company authors, approximate dates, URN from a permalink, stable text ids, span "…more" clicks, Diagnose masking.
 - `tests/linkedin.sample.test.ts`: full page capture with scripts disabled and the id scan.
-- `tests/server.test.ts`: real HTTP round trip for collections and the page samples API, including path-traversal rejection.
+- `tests/whatsapp.test.ts`: data-id and stamp parsing (both date orders, am/pm, 2-digit years), chat name, message body with emoji/line breaks, quoted replies, Read more (expanded id is re-read, content id unchanged), own/system messages skipped, job-post/experience/phone heuristics, merging sightings across groups, the loop (newest first, More, age limit, chat switch, job filter off), loadOlder, and that Diagnose leaks no names, numbers or text.
+- `tests/searches.test.ts`: search URL normalization (sid/origin dropped, encoding kept), stable ids, first/last seen, legacy `sourceUrl` migration, export URL resolution, and `mergeCapturedPosts` writing one search row for many posts (storage mocked in memory).
+- `tests/server.test.ts`: real HTTP round trip for collections (including `whatsappPosts` and the `whatsapp_posts` view, `searches` and the URL columns of the `posts` view) and the page samples API, including path-traversal rejection.
 - `tests/autofill.engine.test.ts`: fills text, select, radio, checkbox on a jsdom form; skip reasons; unmatched; unknown fields; overwrite mode; adapter host detection; unique spec keys.
 - `tests/utils.test.ts`: email extraction and de-obfuscation, CSV quoting, keyword matching, doubled-label collapse, post merging.
 
-The LinkedIn fixture is **synthetic**, built from `selectors.ts`. It proves `parse.ts` works against the selectors, not that the selectors match LinkedIn today. A LinkedIn redesign will not fail tests; it shows up as zero posts captured.
+The LinkedIn and WhatsApp fixtures are **synthetic**, built from each site's `selectors.ts`. It proves `parse.ts` works against the selectors, not that the selectors match LinkedIn today. A LinkedIn redesign will not fail tests; it shows up as zero posts captured.
 
 ---
 
@@ -405,6 +494,7 @@ The LinkedIn fixture is **synthetic**, built from `selectors.ts`. It proves `par
 | 1b | Autofill engine, Greenhouse and Lever adapters | built, unverified live |
 | 1c | Workday adapter (multi-step, comboboxes, tenant overrides) | built, unverified live; first entry only |
 | 1d | Application log, fill reports, tests, docs | done |
+| 1e | WhatsApp group job posts (read-only extractor, own collection and tab, phone and experience parsing) | built, unverified live |
 | 2 | Remote backend (Express + Mongo or keep SQLite), auth, sync. `ApiRepository` already speaks the route shape; point it at the remote URL and add auth headers in `src/shared/storage/index.ts` | not started |
 | 3 | AI: semantic field matching, post ranking and summaries, outreach drafts, profile extraction from the handoff | hooks only |
 
@@ -433,6 +523,12 @@ Call models from the Phase 2 backend, never from the extension with a raw API ke
 - **Pages loaded before the extension** do not have the content script. Reload the tab; the panel says so.
 - **Extraction runs only while the tab is visible and the loop is active.** Switching tabs mid-run is fine; closing the tab ends it.
 - **Most content-search posts have no post link in the page.** LinkedIn's class-less markup carries no post URN for ordinary posts (the 2026-11-13 run found one only on group posts). Those posts get a `text:<hash>` id, a link to the author's activity page instead of the post, and a `postedAt` estimated from "5h"-style labels (`postedAtApprox`). A page sample may show where the real link lives.
+- **WhatsApp extraction is unverified live.** It was written from WhatsApp Web's known markup without a live page. If it captures nothing, use Diagnose chat (`docs/LIVE_TEST.md` 2c) and fix `src/content/whatsapp/selectors.ts`.
+- **Automating WhatsApp Web is against WhatsApp's terms too.** The extension only reads and scrolls your own chats at a reading pace and never types or sends; keep runs manual, one button press at a time.
+- **WhatsApp: image-only posts are skipped.** Many recruiters post a JD as an image or PDF; without a caption there is no text to keep (no OCR).
+- **WhatsApp: history depth is what WhatsApp Web has.** Older messages may live only on the phone; WhatsApp then shows a button to fetch them. The loop clicks a button whose text mentions "older messages", but the phone must be online.
+- **WhatsApp: senders behind LIDs** (`...@lid`, WhatsApp's phone-number privacy) have no number unless their name is one.
+- **WhatsApp: the job filter is a heuristic.** A referral request with three job words passes; a terse post may not. Turn off "store only job-like messages" in Settings to keep everything.
 - **No icons** are bundled yet; Chrome shows a default.
 
 ---
@@ -449,6 +545,12 @@ Call models from the Phase 2 backend, never from the extension with a raw API ke
 | Fill reports "dropdown did not open" | The combobox is not a button/input the setter recognises; force `kind: 'combobox'` or inspect option markup (`optionSelector` in `setters.ts`) |
 | Fill reports "no option matching" | Change `match` to `includes` or adjust the profile value |
 | Side panel blank | Check `chrome://extensions` > extension card > Errors; rebuild |
+| WhatsApp tab says the page has not loaded the extension script | Reload the WhatsApp Web tab after installing or reloading the extension |
+| WhatsApp tab says "No chat open" while a chat is open, or Extract captures 0 | Press **Diagnose chat** and paste the report to the agent; `docs/LIVE_TEST.md` 2c |
+| WhatsApp run stops early with "No older messages loaded" | WhatsApp Web has no older history loaded. Click WhatsApp's own "older messages" link in the chat if shown, then **More**; raise "wait for older messages" in Settings on a slow connection |
+| WhatsApp posts dated wrong by days/months | The date order guess failed. Diagnose chat shows `dayFirst`; tell the agent your WhatsApp date format |
+| WhatsApp tab: "storage server is an older version without WhatsApp posts" | The server was started before this feature. Stop it (Ctrl+C) and run `npm run server` again |
+| `whatsapp_posts` view missing in the SQLite file | Restart `npm run server`; views are created on start |
 | Settings or posts vanished | Profile and settings live in `chrome.storage.local`, which is per Chrome profile and cleared when the extension is removed. Posts in server mode survive in `server/data/jobhunt.sqlite`; in browser mode they are cleared too. Export regularly |
 
 ---
@@ -460,7 +562,7 @@ These apply to **every agent and every person** who edits this repository, inclu
 1. **Update this README in the same change.** If you add, remove, or change a feature, setting, message, storage key, file, script, adapter, host, or limitation, edit the matching section here. Add a line to the [Change log](#change-log) with the date, what changed, and who or what made the change (person or agent name). A change without a README update is incomplete.
 2. **Keep `docs/` in sync** when the change touches architecture (`ARCHITECTURE.md`), adapters (`ADDING_AN_ADAPTER.md`), or AI hooks (`AI_EXTENSION_POINTS.md`).
 3. **Never commit personal data.** `profile/profile.json` stays git-ignored. Do not paste real names, phone numbers, emails, or salary figures into tests, fixtures, docs, or the example profile.
-4. **Respect the layer rules.** Content scripts never touch storage. Adapters never mutate the DOM. All LinkedIn selectors go in `selectors.ts`. New ATS hosts go in `ATS_HOSTS` in `manifest.config.ts`. New messages go in `MessageMap`.
+4. **Respect the layer rules.** Content scripts never touch storage. Adapters never mutate the DOM. All LinkedIn selectors go in `src/content/linkedin/selectors.ts`, all WhatsApp selectors in `src/content/whatsapp/selectors.ts`. WhatsApp posts stay in their own `whatsappPosts` collection. New ATS hosts go in `ATS_HOSTS` in `manifest.config.ts`. New messages go in `MessageMap`.
 5. **Run before finishing:** `npm run typecheck`, `npm test`, `npm run build`. All three must pass. Report the results honestly; if something fails, say so.
 6. **Add or update tests** for parsers, setters, engine behaviour, and utilities. If you change the LinkedIn selectors, update `tests/fixtures/linkedin-post.ts` to match.
 7. **Do not widen scope silently.** Do what was asked; note anything else you noticed as a suggestion, not as a change.
@@ -483,3 +585,5 @@ These apply to **every agent and every person** who edits this repository, inclu
 | 2026-11-13 | Second live run (01:06 IST) re-saved 21 of the 37 posts under the same ids (ids stable across runs) with the new build, but old wrapped links stayed because `mergePost` unioned links. `mergePost` now takes links from the parse with the most text and unions only for shorter parses. Tests: 39. | Claude Opus 5.5 (Claude Code), requested by Ayush |
 | 2026-11-13 | Posts now record `lastSeenAt` and `sourceUrls[]` (every search that showed the post; `capturedAt`/`sourceUrl` stay the first). CSV adds `urlKind`, `postedAtApprox`, `lastSeenAt`, `sourceUrls`; "Copy all details" adds capture/last-seen time and searches; SQL `posts` view adds `url_kind`, `posted_at_approx`, `posted_label`, `captured_at`, `last_seen_at`, `source_urls` and is recreated on server start. Scrolling: last post scrolled into view (inner scroll containers), "Show more results" also found by text/aria-label (`SEL.loadMoreTextPattern`), growth measured on `<main>` too. Tests: 42. | Claude Opus 5.5 (Claude Code), requested by Ayush |
 | 2026-11-13 | Posts tab: number box + **Extract** (capture N from the top, saved to `settings.extract.maxPosts`) and **More (+20)** (next `moreBatch` posts not yet captured on the page); random pause between scrolls (`pauseMinMs`/`pauseMaxMs`, default 3-7 s) and new Settings fields; loop moved to `src/content/linkedin/extract.ts` (`runExtraction`, page session, `pickPause`); `LINKEDIN_EXTRACT_START` takes `mode`. Contact filter (any / email or link / email / link / neither) replaces "has email"; stored counts show posts with link and with neither; links shown open on cards. Tests: 46. | Claude Opus 5.5 (Claude Code), requested by Ayush |
+| 2026-11-13 | **WhatsApp group job posts** (`src/content/whatsapp/`, new `web.whatsapp.com` host): read-only extractor that reads the open chat newest first, clicks "Read more", scrolls up with a random 1.5-4 s pause, keeps job-like messages (`isJobPost`), and stops at a count of job posts, an age limit (default 30 days) or the start of the loaded history. New `whatsappPosts` collection + `whatsapp_posts` SQL view, separate from LinkedIn `posts`; one row per text (`wa:<hash>`) with a sighting per group/sender/time. Phone extraction (`utils/phone.ts`, wa.me links) and experience parsing (`utils/jobtext.ts`) with a "my years" fit filter. New WhatsApp side-panel tab (Extract / More / Diagnose chat, filters by contact, group, years, keyword, status; CSV/JSON/text export), `settings.whatsapp`, messages `WHATSAPP_EXTRACT_START/STOP/STATUS/DIAGNOSE/EXTRACT_PROGRESS/CAPTURED`. `fnv1a` moved to `utils/hash.ts` and `pickPause` to `utils/dom.ts` (LinkedIn ids unchanged). Not yet tried on a live WhatsApp page. Also recorded: LinkedIn Extract/More worked live (37 -> 239 posts). Tests: 67. | Claude Opus 5.5 (Claude Code), requested by Ayush |
+| 2026-11-13 | LinkedIn search URLs stored once: new `searches` collection (SQL view `searches`, browser key `collection:searches`, `SearchPage` type, `src/shared/searches.ts`); posts keep `searchIds[]` instead of `sourceUrl`/`sourceUrls`; `POSTS_CAPTURED` carries `pageUrl`; per-visit params (`sid`, `origin`, ...) removed so one search is one row. The first capture after the update migrates every stored post's URLs (dry run on a copy of the live DB: 239 posts, 2 searches, post JSON 597 KB -> 486 KB). CSV/JSON/text exports and the `posts` view resolve ids back to URLs. Posts tab: search filter with post counts and **open search** link. Coordination with the WhatsApp agent in `AGENTS_COORDINATION.md`. Tests: 77 (all agents). | Claude Opus 5.5 (Claude Code), requested by Ayush |

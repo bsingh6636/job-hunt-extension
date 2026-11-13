@@ -58,7 +58,7 @@ describe('mergePost', () => {
     emails: ['a@b.com'],
     links: [],
     capturedAt: '2026-01-01T00:00:00Z',
-    sourceUrl: 's',
+    searchIds: ['search:a'],
     matchedKeywords: [],
     excludedBy: [],
     status: 'contacted',
@@ -77,12 +77,12 @@ describe('mergePost', () => {
     expect(mergePost(stored, { ...base, text: 'sh', links: ['https://y.io/'] }).links).toEqual([...stored.links, 'https://y.io/']);
   });
   it('keeps first capture time and search, records last seen time and every search', () => {
-    const later = { ...base, capturedAt: '2026-02-01T00:00:00Z', lastSeenAt: '2026-02-01T00:00:00Z', sourceUrl: 's2', sourceUrls: ['s2'] };
+    const later = { ...base, capturedAt: '2026-02-01T00:00:00Z', lastSeenAt: '2026-02-01T00:00:00Z', searchIds: ['search:b'] };
     const merged = mergePost(base, later);
     expect(merged.capturedAt).toBe('2026-01-01T00:00:00Z');
-    expect(merged.sourceUrl).toBe('s');
     expect(merged.lastSeenAt).toBe('2026-02-01T00:00:00Z');
-    expect(merged.sourceUrls).toEqual(['s', 's2']);
+    expect(merged.searchIds).toEqual(['search:a', 'search:b']);
+    expect(mergePost(merged, { ...later, searchIds: ['search:a'] }).searchIds).toEqual(['search:a', 'search:b']);
   });
   it('returns incoming when nothing stored', () => {
     expect(mergePost(undefined, base)).toBe(base);

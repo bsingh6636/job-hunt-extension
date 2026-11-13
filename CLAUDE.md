@@ -9,6 +9,7 @@ Short version:
 - Never commit personal data. `profile/profile.json` is git-ignored and must stay that way.
 - Storage defaults to the local SQLite server (`server/`, `npm run server`). Never add browser caching of posts in server mode. Server stays on 127.0.0.1.
 - If you are testing on a live LinkedIn page and extraction fails, use Posts > Diagnose page and follow `docs/LIVE_TEST.md`; fix only `src/content/linkedin/selectors.ts` (class selectors in `SEL`, structural patterns in `STRUCT`) unless the structure forces more. Real HTML is in `server/data/samples/` once someone has pressed **Save page sample**; read it from disk.
-- Layer rules: content scripts never touch storage; adapters never mutate the DOM; all LinkedIn selectors live in `src/content/linkedin/selectors.ts`; new ATS hosts go in `ATS_HOSTS` in `manifest.config.ts`; new messages go in `MessageMap` in `src/shared/messages.ts`.
+- WhatsApp extraction (`src/content/whatsapp/`) is not verified live yet. When it fails, use WhatsApp tab > Diagnose chat (`docs/LIVE_TEST.md` 2c) and fix `src/content/whatsapp/selectors.ts`. WhatsApp posts live in their own `whatsappPosts` collection, never in `posts`.
+- Layer rules: content scripts never touch storage; adapters never mutate the DOM; all LinkedIn selectors live in `src/content/linkedin/selectors.ts`, all WhatsApp selectors in `src/content/whatsapp/selectors.ts`; new ATS hosts go in `ATS_HOSTS` in `manifest.config.ts`; new messages go in `MessageMap` in `src/shared/messages.ts`.
 - Before finishing: `npm run typecheck`, `npm test`, `npm run build` must all pass. Report failures honestly.
 - Do not commit or push unless asked.

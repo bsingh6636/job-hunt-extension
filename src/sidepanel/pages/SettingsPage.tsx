@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { rematchAllPosts } from '@shared/posts';
+import { rematchAllWhatsApp } from '@shared/whatsapp';
 import { checkServer, getSettings, settingsStore } from '@shared/storage';
 import { DEFAULT_SETTINGS, type Settings } from '@shared/types';
 import { parseKeywordList } from '@shared/utils/keywords';
 
 /**
  * Keyword filters and extraction options. Keywords are matched
- * case-insensitively as phrases against post text + author headline.
- * Saving re-tags every stored post.
+ * case-insensitively as phrases against post text (+ author headline on
+ * LinkedIn). Saving re-tags every stored LinkedIn and WhatsApp post.
  */
 export function SettingsPage() {
   const [form, setForm] = useState<Settings | null>(null);
@@ -46,7 +47,8 @@ export function SettingsPage() {
     };
     await settingsStore.set(next);
     const count = await rematchAllPosts();
-    setMessage(`Saved. Re-tagged ${count} stored post(s).`);
+    const waCount = await rematchAllWhatsApp();
+    setMessage(`Saved. Re-tagged ${count} LinkedIn and ${waCount} WhatsApp post(s).`);
     setTimeout(() => setMessage(''), 3000);
   };
 
@@ -58,6 +60,9 @@ export function SettingsPage() {
 
   const num = (key: keyof Settings['extract'], value: string) =>
     setForm({ ...form, extract: { ...form.extract, [key]: Math.max(1, Number(value) || 0) } });
+  const waNum = (key: keyof Settings['whatsapp'], value: string, min = 1) =>
+    setForm({ ...form, whatsapp: { ...form.whatsapp, [key]: Math.max(min, Number(value) || 0) } });
+  const waFlag = (key: 'onlyJobPosts' | 'scroll' | 'expand', value: boolean) => setForm({ ...form, whatsapp: { ...form.whatsapp, [key]: value } });
 
   return (
     <div>
@@ -74,10 +79,10 @@ export function SettingsPage() {
       </label>
       <label className="check">
         <input type="checkbox" checked={form.captureOnlyMatching} onChange={(e) => setForm({ ...form, captureOnlyMatching: e.target.checked })} />
-        store only posts that hit an include keyword (default: store everything, filter later)
+        store only posts that hit an include keyword, LinkedIn and WhatsApp (default: store everything, filter later)
       </label>
 
-      <h3>Extraction</h3>
+      <h3>LinkedIn extraction</h3>
       <label className="field">
         <span>Posts to capture per Extract (also editable on the Posts tab)</span>
         <input type="number" min={1} value={form.extract.maxPosts} onChange={(e) => num('maxPosts', e.target.value)} />
@@ -109,6 +114,46 @@ export function SettingsPage() {
         click "...more" to expand posts
       </label>
 
+      <h3>WhatsApp extraction</h3>
+      <label className="field">
+        <span>Job posts to capture per Extract (also editable on the WhatsApp tab). Other messages are read but not stored</span>
+        <input type="number" min={1} value={form.whatsapp.maxPosts} onChange={(e) => waNum('maxPosts', e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Job posts to capture per More press</span>
+        <input type="number" min={1} value={form.whatsapp.moreBatch} onChange={(e) => waNum('moreBatch', e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Stop at messages older than (days, 0 = no limit)</span>
+        <input type="number" min={0} value={form.whatsapp.maxAgeDays} onChange={(e) => waNum('maxAgeDays', e.target.value, 0)} />
+      </label>
+      <div className="row">
+        <label className="field">
+          <span>Pause between scrolls, at least (seconds)</span>
+          <input type="number" min={0.5} step={0.5} value={form.whatsapp.pauseMinMs / 1000} onChange={(e) => waNum('pauseMinMs', String(Number(e.target.value) * 1000))} />
+        </label>
+        <label className="field">
+          <span>at most (seconds)</span>
+          <input type="number" min={0.5} step={0.5} value={form.whatsapp.pauseMaxMs / 1000} onChange={(e) => waNum('pauseMaxMs', String(Number(e.target.value) * 1000))} />
+        </label>
+      </div>
+      <label className="field">
+        <span>Wait for older messages after each scroll up, at most (ms)</span>
+        <input type="number" min={300} step={100} value={form.whatsapp.scrollDelayMs} onChange={(e) => waNum('scrollDelayMs', e.target.value)} />
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={form.whatsapp.onlyJobPosts} onChange={(e) => waFlag('onlyJobPosts', e.target.checked)} />
+        store only messages that look like job posts (hiring words, experience, location, email or phone)
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={form.whatsapp.scroll} onChange={(e) => waFlag('scroll', e.target.checked)} />
+        scroll up to load older messages
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={form.whatsapp.expand} onChange={(e) => waFlag('expand', e.target.checked)} />
+        click "Read more" on long messages
+      </label>
+
       <div className="row">
         <button className="primary" onClick={() => void save()}>
           Save
@@ -137,7 +182,7 @@ export function SettingsPage() {
         {serverMsg && <span className={serverOk ? 'success small' : 'error small'}>{serverMsg}</span>}
       </div>
       <p className="muted small">
-        Posts, applications and fill reports go to the selected storage. Profile and these settings always stay in the browser. Switching the
+        LinkedIn posts, WhatsApp posts, applications and fill reports go to the selected storage. Profile and these settings always stay in the browser. Switching the
         mode does not move data that is already stored, so pick one mode and keep it.
       </p>
     </div>

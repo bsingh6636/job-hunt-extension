@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { PostsPage } from './pages/PostsPage';
+import { WhatsAppPage } from './pages/WhatsAppPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AutofillPage } from './pages/AutofillPage';
 import { LogPage } from './pages/LogPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { useActiveTab } from './lib/hooks';
 
-type Tab = 'posts' | 'autofill' | 'profile' | 'log' | 'settings';
+type Tab = 'posts' | 'whatsapp' | 'autofill' | 'profile' | 'log' | 'settings';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'posts', label: 'Posts' },
+  { id: 'whatsapp', label: 'WhatsApp' },
   { id: 'autofill', label: 'Autofill' },
   { id: 'profile', label: 'Profile' },
   { id: 'log', label: 'Log' },
@@ -19,6 +21,7 @@ const TABS: { id: Tab; label: string }[] = [
 function suggestedTab(url: string | undefined): Tab | null {
   if (!url) return null;
   if (/linkedin\.com/i.test(url)) return 'posts';
+  if (/web\.whatsapp\.com/i.test(url)) return 'whatsapp';
   if (/greenhouse\.io|lever\.co|myworkday(jobs|site)\.com/i.test(url)) return 'autofill';
   return null;
 }
@@ -34,7 +37,7 @@ export function App() {
   });
   const [autoSwitched, setAutoSwitched] = useState<string | undefined>();
 
-  // Follow the user: LinkedIn tab -> Posts, ATS tab -> Autofill. Once per URL host.
+  // Follow the user: LinkedIn tab -> Posts, WhatsApp Web -> WhatsApp, ATS tab -> Autofill. Once per URL host.
   useEffect(() => {
     const suggestion = suggestedTab(activeTab?.url);
     const host = activeTab?.url ? new URL(activeTab.url).hostname : undefined;
@@ -63,6 +66,7 @@ export function App() {
       </nav>
       <main className="page">
         {tab === 'posts' && <PostsPage activeTab={activeTab} />}
+        {tab === 'whatsapp' && <WhatsAppPage activeTab={activeTab} />}
         {tab === 'autofill' && <AutofillPage activeTab={activeTab} />}
         {tab === 'profile' && <ProfilePage />}
         {tab === 'log' && <LogPage />}

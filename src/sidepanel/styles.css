@@ -232,6 +232,13 @@ label.check {
 .chip.warn {
   color: var(--danger);
 }
+.chip.exp {
+  border-color: var(--border);
+  font-weight: 600;
+}
+.chip a {
+  color: inherit;
+}
 
 .post-text {
   white-space: pre-wrap;

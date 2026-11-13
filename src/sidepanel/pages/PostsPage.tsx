@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { onMessage } from '@shared/messages';
-import { getSettings, postsRepo, settingsStore } from '@shared/storage';
+import { searchIdsOf, searchLabel } from '@shared/searches';
+import { getSettings, postsRepo, searchesRepo, settingsStore } from '@shared/storage';
 import { POST_STATUSES, type ExtractMode, type ExtractProgress, type ExtractedPost, type PostStatus } from '@shared/types';
 import { PostCard } from '../components/PostCard';
 import { download, postsToCsv, postsToJson, postsToText, copyText, stamp } from '../lib/export';
@@ -22,8 +23,12 @@ const CONTACT_FILTERS: Record<ContactFilter, { label: string; test: (p: Extracte
   none: { label: 'no email, no link', test: (p) => p.emails.length === 0 && p.links.length === 0 },
 };
 
+const shorten = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
 export function PostsPage({ activeTab }: Props) {
   const { items: posts } = useRepository(postsRepo);
+  const { items: searches } = useRepository(searchesRepo);
+  const searchById = useMemo(() => new Map(searches.map((s) => [s.id, s])), [searches]);
   const { value: settings } = useValueStore(settingsStore);
   const [progress, setProgress] = useState<ExtractProgress | null>(null);
   const [error, setError] = useState('');
@@ -51,6 +56,8 @@ export function PostsPage({ activeTab }: Props) {
   const [hideExcluded, setHideExcluded] = useState(true);
   const [statusFilter, setStatusFilter] = useState<PostStatus | 'all'>('all');
   const [keyword, setKeyword] = useState<string | null>(null);
+  /** A searches id, or 'all'. */
+  const [search, setSearch] = useState('all');
 
   useEffect(() => onMessage({ LINKEDIN_EXTRACT_PROGRESS: ({ progress }) => setProgress(progress) }), []);
 
@@ -129,20 +136,29 @@ export function PostsPage({ activeTab }: Props) {
       .filter((p) => !hideExcluded || p.excludedBy.length === 0)
       .filter((p) => statusFilter === 'all' || p.status === statusFilter)
       .filter((p) => !keyword || p.matchedKeywords.includes(keyword))
+      .filter((p) => search === 'all' || searchIdsOf(p).includes(search))
       .filter((p) => !q || `${p.text} ${p.author.name} ${p.author.headline ?? ''} ${p.emails.join(' ')}`.toLowerCase().includes(q))
       .sort((a, b) => (b.postedAt ?? b.capturedAt).localeCompare(a.postedAt ?? a.capturedAt));
-  }, [posts, query, contact, hideExcluded, statusFilter, keyword]);
+  }, [posts, query, contact, hideExcluded, statusFilter, keyword, search]);
 
   const withEmail = posts.filter((p) => p.emails.length > 0).length;
   const withLink = posts.filter((p) => p.links.length > 0).length;
   const withNeither = posts.filter(CONTACT_FILTERS.none.test).length;
 
+  /** Searches for the filter menu, most recently run first, with how many stored posts each found. */
+  const searchMenu = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of posts) for (const id of searchIdsOf(p)) counts.set(id, (counts.get(id) ?? 0) + 1);
+    return [...searches].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt)).map((s) => ({ page: s, posts: counts.get(s.id) ?? 0 }));
+  }, [posts, searches]);
+  const selectedSearch = searchById.get(search);
+
   const bulk = {
-    copyJson: () => copyText(postsToJson(filtered)).then(() => setFlash('Copied JSON')),
-    copyCsv: () => copyText(postsToCsv(filtered)).then(() => setFlash('Copied CSV')),
-    copyText: () => copyText(postsToText(filtered)).then(() => setFlash('Copied text')),
-    dlJson: () => download(`linkedin-posts-${stamp()}.json`, postsToJson(filtered), 'application/json'),
-    dlCsv: () => download(`linkedin-posts-${stamp()}.csv`, postsToCsv(filtered), 'text/csv'),
+    copyJson: () => copyText(postsToJson(filtered, searchById)).then(() => setFlash('Copied JSON')),
+    copyCsv: () => copyText(postsToCsv(filtered, searchById)).then(() => setFlash('Copied CSV')),
+    copyText: () => copyText(postsToText(filtered, searchById)).then(() => setFlash('Copied text')),
+    dlJson: () => download(`linkedin-posts-${stamp()}.json`, postsToJson(filtered, searchById), 'application/json'),
+    dlCsv: () => download(`linkedin-posts-${stamp()}.csv`, postsToCsv(filtered, searchById), 'text/csv'),
     deleteFiltered: async () => {
       if (!confirm(`Delete ${filtered.length} post(s) currently shown?`)) return;
       await postsRepo.removeMany(filtered.map((p) => p.id));
@@ -264,6 +280,23 @@ export function PostsPage({ activeTab }: Props) {
           ))}
         </select>
       </div>
+      {searchMenu.length > 0 && (
+        <div className="row">
+          <select value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 'auto', maxWidth: '100%' }} title={selectedSearch?.url}>
+            <option value="all">all searches ({searchMenu.length})</option>
+            {searchMenu.map(({ page, posts: n }) => (
+              <option key={page.id} value={page.id} title={page.url}>
+                {shorten(searchLabel(page), 70)} ({n})
+              </option>
+            ))}
+          </select>
+          {selectedSearch && (
+            <a href={selectedSearch.url} target="_blank" rel="noreferrer" title={selectedSearch.url}>
+              open search
+            </a>
+          )}
+        </div>
+      )}
       {includeKeywords.length > 0 && (
         <div className="chips">
           {includeKeywords.map((k) => (
@@ -292,7 +325,7 @@ export function PostsPage({ activeTab }: Props) {
       {filtered.length === 0 ? (
         <p className="muted">No posts match.</p>
       ) : (
-        filtered.map((p) => <PostCard key={p.id} post={p} />)
+        filtered.map((p) => <PostCard key={p.id} post={p} searches={searchById} />)
       )}
     </div>
   );

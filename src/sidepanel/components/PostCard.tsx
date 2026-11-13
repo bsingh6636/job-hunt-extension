@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { postsRepo } from '@shared/storage';
 import { POST_STATUSES, type ExtractedPost, type PostStatus } from '@shared/types';
-import { copyText, formatDate, postToText } from '../lib/export';
+import { copyText, formatDate, postToText, type SearchIndex } from '../lib/export';
 import { useDebounced, useFlash } from '../lib/hooks';
 
 interface Props {
   post: ExtractedPost;
+  /** Stored search pages, so "Copy all" can list the searches that found the post. */
+  searches: SearchIndex;
 }
 
-export function PostCard({ post }: Props) {
+export function PostCard({ post, searches }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState(post.notes ?? '');
   const [flash, setFlash] = useFlash();
@@ -108,7 +110,7 @@ export function PostCard({ post }: Props) {
             </option>
           ))}
         </select>
-        <button onClick={() => void copy(postToText(post), 'all details')}>Copy all</button>
+        <button onClick={() => void copy(postToText(post, searches), 'all details')}>Copy all</button>
         <button onClick={() => void copy(post.text, 'text')}>Copy text</button>
         <button className="danger" onClick={remove}>
           Delete

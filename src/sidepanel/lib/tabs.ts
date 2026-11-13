@@ -1,6 +1,7 @@
 import { isErrorResponse, sendToTab, type MessageReq, type MessageRes, type MessageType } from '@shared/messages';
 
 export const isLinkedInUrl = (url?: string) => !!url && /^https:\/\/www\.linkedin\.com\//i.test(url);
+export const isWhatsAppUrl = (url?: string) => !!url && /^https:\/\/web\.whatsapp\.com\//i.test(url);
 export const isAtsUrl = (url?: string) => !!url && /greenhouse\.io|lever\.co|myworkday(jobs|site)\.com/i.test(url);
 
 /**

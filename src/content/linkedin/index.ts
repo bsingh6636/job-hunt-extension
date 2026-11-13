@@ -34,7 +34,7 @@ async function run(options: ExtractOptions, mode: ExtractMode): Promise<void> {
       session,
       shouldStop: () => stopRequested,
       report,
-      send: async (posts) => (await sendToRuntime('POSTS_CAPTURED', { posts }))?.stored ?? posts.length,
+      send: async (posts, pageUrl) => (await sendToRuntime('POSTS_CAPTURED', { posts, pageUrl }))?.stored ?? posts.length,
     });
   } catch (err) {
     log.error('extraction failed', err);
